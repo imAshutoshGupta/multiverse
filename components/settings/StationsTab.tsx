@@ -6,10 +6,9 @@ import { Button, cn, Field, Input, Select } from "@/components/ui";
 import { formatINR } from "@/lib/availability";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { Station, StationType } from "@/lib/types";
-import { reorder, Section, Toggle, useSaver } from "./shared";
+import { reorder, Section, Toggle, usePending, usePendingOrder, useSaver } from "./shared";
 
 export function StationsTab({ stations, types }: { stations: Station[]; types: StationType[] }) {
-  const mover = useSaver();
   if (types.length === 0) {
     return (
       <Section title="Stations">
@@ -32,29 +31,32 @@ export function StationsTab({ stations, types }: { stations: Station[]; types: S
             {list.length === 0 ? (
               <p className="text-sm text-muted">No stations yet. Customers won&apos;t see this world until it has one.</p>
             ) : (
-              <div className="space-y-2">
-                <div className="hidden grid-cols-[1.6fr_1fr_0.8fr_0.7fr_auto] gap-2 px-1 text-xs font-semibold text-muted md:grid">
-                  <span>Name</span>
-                  <span>World</span>
-                  <span>Own price (₹/hr)</span>
-                  <span>Max players</span>
-                  <span className="w-52" />
-                </div>
-                {list.map((s, i) => (
-                  <StationRow
-                    key={s.id}
-                    station={s}
-                    types={types}
-                    canUp={i > 0}
-                    canDown={i < list.length - 1}
-                    onMove={(dir) => mover.run(() => reorder("stations", "id", list, i, i + dir))}
-                  />
-                ))}
-              </div>
+              <StationList stations={list} types={types} />
             )}
           </Section>
         );
       })}
+    </div>
+  );
+}
+
+/** One world's stations; up/down moves show straight away and save in the background. */
+function StationList({ stations, types }: { stations: Station[]; types: StationType[] }) {
+  const mover = useSaver();
+  const [list, move] = usePendingOrder(stations, (s) => s.id, (items, from, to) => mover.run(() => reorder("stations", "id", items, from, to)));
+  return (
+    <div className="space-y-2">
+      <div className="hidden grid-cols-[1.6fr_1fr_0.8fr_0.7fr_auto] gap-2 px-1 text-xs font-semibold text-muted md:grid">
+        <span>Name</span>
+        <span>World</span>
+        <span>Own price (₹/hr)</span>
+        <span>Max players</span>
+        <span className="w-52" />
+      </div>
+      {list.map((s, i) => (
+        <StationRow key={s.id} station={s} types={types} canUp={i > 0} canDown={i < list.length - 1} onMove={(dir) => move(i, i + dir)} />
+      ))}
+      {mover.error && <p className="px-1 text-sm text-rose-300">{mover.error}</p>}
     </div>
   );
 }
@@ -137,15 +139,22 @@ function StationRow({
   const [s, setS] = useState(station);
   const saver = useSaver();
   const sb = supabaseBrowser();
+  const [view, apply] = usePending({ active: station.active });
+  const [removing, setRemoving] = useState(false);
+  async function remove() {
+    setRemoving(true); // gone straight away; comes back with the error if the delete fails
+    if (!(await saver.run(() => sb.from("stations").delete().eq("id", station.id)))) setRemoving(false);
+  }
   const world = types.find((t) => t.name === s.type);
   const dirty =
     s.name !== station.name ||
     s.type !== station.type ||
     (s.hourly_rate ?? null) !== (station.hourly_rate === null ? null : Number(station.hourly_rate)) ||
     s.max_players !== station.max_players;
+  if (removing) return null;
 
   return (
-    <div className={cn("rounded-2xl p-1", !station.active && "opacity-50")}>
+    <div className={cn("rounded-2xl p-1 transition-opacity", !view.active && "opacity-50")}>
       <div className="grid grid-cols-2 items-center gap-2 md:grid-cols-[1.6fr_1fr_0.8fr_0.7fr_auto]">
         <Input value={s.name} onChange={(e) => setS({ ...s, name: e.target.value })} aria-label="Station name" className="col-span-2 md:col-span-1" />
         <Select value={s.type} onChange={(e) => setS({ ...s, type: e.target.value })} aria-label="World">
@@ -189,9 +198,9 @@ function StationRow({
             </Button>
           ) : (
             <Toggle
-              checked={station.active}
-              onChange={(v) => saver.run(() => sb.from("stations").update({ active: v }).eq("id", station.id))}
-              label={station.active ? "On" : "Off"}
+              checked={view.active}
+              onChange={(v) => apply({ active: v }, () => saver.run(() => sb.from("stations").update({ active: v }).eq("id", station.id)))}
+              label={view.active ? "On" : "Off"}
             />
           )}
           <span className="ml-auto" />
@@ -205,7 +214,7 @@ function StationRow({
             size="sm"
             variant="ghost"
             className="text-rose-300"
-            onClick={() => saver.run(() => sb.from("stations").delete().eq("id", station.id))}
+            onClick={remove}
             aria-label={`Delete ${station.name}`}
           >
             <Trash2 className="size-4" />

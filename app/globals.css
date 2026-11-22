@@ -47,6 +47,10 @@ body {
   outline: 2px solid var(--color-rift);
   outline-offset: 2px;
 }
+/* A dialog takes focus itself on open; no ring around the whole card */
+dialog:focus-visible {
+  outline: none;
+}
 
 /* Staff pages: faint glow from the brand colour */
 .cosmos {
@@ -80,6 +84,18 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   from {
     transform: translateY(40%);
     opacity: 0;
+  }
+}
+
+/* Date picker popover: drops in from its trigger */
+.date-pop {
+  transform-origin: top center;
+  animation: date-pop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes date-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
   }
 }
 

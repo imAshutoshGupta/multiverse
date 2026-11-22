@@ -13,7 +13,11 @@ import type { Booking, BookingPayment, BookingStatus, Game, PaymentKind, Payment
 import { BLOCKING_STATUSES } from "@/lib/types";
 
 // Phones get the full-size (md) button, thumb-friendly; wider screens shrink it to the compact row
-const ACTION_BTN = "sm:h-8 sm:px-3 sm:text-xs";
+const ACTION_BTN = "sm:h-9 sm:px-3 sm:text-xs";
+/** The main footer button: full width on phones, same height as the action row on wider screens. */
+const MAIN_BTN = "w-full sm:ml-auto sm:h-9 sm:w-auto sm:px-5 sm:text-sm";
+/** Amount input + method picker on one line, both 36px tall so labels and controls line up. */
+const PAY_ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3";
 const CONTACT_BTN = cn(ACTION_BTN, "whitespace-nowrap");
 /** In a 2-column grid, a lone last button spans the full row instead of leaving a gap. */
 const ORPHAN_SPAN = "[&>*:last-child:nth-child(odd)]:col-span-2";
@@ -47,7 +51,7 @@ export function BookingDialog({
 }) {
   const title = !target ? "" : target.mode === "new" ? "New booking" : target.booking.customer_name;
   return (
-    <Modal open={!!target} onClose={onClose} title={title}>
+    <Modal open={!!target} onClose={onClose} title={title} flush>
       {target && (
         <BookingForm
           key={target.mode === "edit" ? target.booking.id : `${target.stationId}-${target.start}`}
@@ -234,7 +238,8 @@ function BookingForm({
       : null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-5 py-4">
       {existing && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
           <StatusBadge status={existing.status} />
@@ -281,7 +286,7 @@ function BookingForm({
           </Select>
         </Field>
         <Field label="Customer name" className="col-span-2 sm:col-span-1">
-          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoFocus={!existing} />
+          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} data-autofocus={!existing || undefined} />
         </Field>
         <Field label="Phone">
           <Input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="Optional" />
@@ -327,7 +332,7 @@ function BookingForm({
             ]}
           />
           {payMode !== "none" && (
-            <div className="mt-3 flex flex-wrap items-end gap-3">
+            <div className={cn("mt-3", PAY_ROW)}>
               {payMode === "advance" && (
                 <Field label="Advance amount (₹)">
                   <Input
@@ -339,7 +344,7 @@ function BookingForm({
                     onChange={(e) => setAdvance(e.target.value)}
                     placeholder="e.g. 200"
                     aria-invalid={advanceInvalid}
-                    className="w-36"
+                    className="h-9"
                     autoFocus
                   />
                 </Field>
@@ -405,7 +410,9 @@ function BookingForm({
         </div>
       )}
 
-      <div className="sticky bottom-0 z-10 -mx-5 -mb-4 flex flex-col gap-2 border-t border-line bg-panel px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:pb-4 sm:pt-4">
+    </div>
+
+      <div className="flex shrink-0 flex-col gap-2 border-t border-line bg-panel px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:py-3">
         {existing ? (
           <>
             <div className={cn("grid grid-cols-2 gap-2 empty:hidden sm:flex sm:flex-wrap", ORPHAN_SPAN)}>
@@ -425,7 +432,7 @@ function BookingForm({
                 </Button>
               )}
               {["pending", "confirmed"].includes(existing.status) && (
-                <Button variant="ghost" className={ACTION_BTN} disabled={saving} onClick={() => setStatus("no_show")}>
+                <Button variant="outline" className={cn(ACTION_BTN, "text-muted")} disabled={saving} onClick={() => setStatus("no_show")}>
                   No-show
                 </Button>
               )}
@@ -444,16 +451,16 @@ function BookingForm({
                 </Button>
               )}
             </div>
-            <Button size="lg" className="w-full sm:ml-auto sm:h-10 sm:w-auto sm:px-4 sm:text-sm" disabled={saving || conflict} onClick={() => save()}>
+            <Button size="lg" className={MAIN_BTN} disabled={saving || conflict} onClick={() => save()}>
               {saving ? "Saving…" : "Save"}
             </Button>
           </>
         ) : savedWithError ? (
-          <Button size="lg" className="w-full sm:ml-auto sm:h-10 sm:w-auto sm:px-4 sm:text-sm" onClick={onDone}>
+          <Button size="lg" className={MAIN_BTN} onClick={onDone}>
             Close
           </Button>
         ) : (
-          <Button size="lg" className="w-full sm:ml-auto sm:h-10 sm:w-auto sm:px-4 sm:text-sm" disabled={saving || conflict || !stationId} onClick={() => save()}>
+          <Button size="lg" className={MAIN_BTN} disabled={saving || conflict || !stationId} onClick={() => save()}>
             {saving
               ? "Saving…"
               : payMode === "full"
@@ -464,7 +471,7 @@ function BookingForm({
           </Button>
         )}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -632,7 +639,7 @@ function PaymentsPanel({
       {showForm && (
         <div className={cn("mt-3 rounded-xl border p-3", mode === "refund" ? "border-sky-400/40" : "border-line")}>
           <div className="text-sm font-semibold">{mode === "refund" ? "Give money back" : "Collect payment"}</div>
-          <div className="mt-2 flex flex-wrap items-end gap-3">
+          <div className={cn("mt-2", PAY_ROW)}>
             <Field label="Amount (₹)">
               <Input
                 type="number"
@@ -642,7 +649,7 @@ function PaymentsPanel({
                 value={amount ?? (suggested ? String(suggested) : "")}
                 onChange={(e) => setAmount(e.target.value)}
                 aria-invalid={invalid}
-                className="w-32"
+                className="h-9"
               />
             </Field>
             <Field label={mode === "refund" ? "Given back by" : "Paid by"}>

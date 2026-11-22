@@ -1,6 +1,5 @@
 "use client";
 import { ImagePlus, Loader2, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { refreshCatalog } from "@/app/actions/catalog";
 import { Button, cn, ErrorNote } from "@/components/ui";
@@ -9,9 +8,8 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 
 type DbResult = PromiseLike<{ error: { message: string; code?: string } | null }>;
 
-/** Runs a write, then refreshes the staff page and the cached public page. */
+/** Runs a write, then refreshes the staff page and the cached public page (one server roundtrip). */
 export function useSaver() {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -19,14 +17,19 @@ export function useSaver() {
     setSaving(true);
     setError(null);
     setSaved(false);
-    const { error } = await fn();
+    let error: { message: string; code?: string } | null;
+    try {
+      ({ error } = await fn());
+      // Re-renders this page with fresh data in the same response
+      if (!error) await refreshCatalog();
+    } catch (e) {
+      error = { message: e instanceof Error ? e.message : String(e) };
+    }
     if (error) {
       setSaving(false);
       setError(friendly(error));
       return false;
     }
-    await refreshCatalog();
-    router.refresh();
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2200);
@@ -35,11 +38,82 @@ export function useSaver() {
   return { error, saving, saved, run, setError };
 }
 
+const sameValue = (a: unknown, b: unknown) =>
+  Array.isArray(a) && Array.isArray(b) ? [...a].sort().join("\u0000") === [...b].sort().join("\u0000") : a === b;
+
+/**
+ * Instant UI for fields that save on click (toggles, chips, selects). `apply` shows the new value
+ * straight away and runs the save; the value rolls back if the save fails. Pending values are
+ * dropped once every save has finished and fresh props agree with them.
+ */
+export function usePending<T extends object>(source: T) {
+  const [pending, setPending] = useState<Partial<T>>({});
+  const [busy, setBusy] = useState(0);
+  if (busy === 0) {
+    const keep = Object.entries(pending).filter(([k, v]) => !sameValue(source[k as keyof T], v));
+    if (keep.length !== Object.keys(pending).length) setPending(Object.fromEntries(keep) as Partial<T>);
+  }
+  const view = { ...source, ...pending } as T;
+
+  async function apply(patch: Partial<T>, save: () => Promise<boolean>) {
+    setPending((p) => ({ ...p, ...patch }));
+    setBusy((b) => b + 1);
+    const ok = await save();
+    setBusy((b) => b - 1);
+    if (!ok) setPending((p) => Object.fromEntries(Object.entries(p).filter(([k]) => !(k in patch))) as Partial<T>);
+    return ok;
+  }
+  return [view, apply] as const;
+}
+
+/**
+ * Instant reordering for a list moved with up/down buttons. The list shows the new order straight
+ * away; saves run one after another (so the database ends up in click order) and the order rolls
+ * back if one fails.
+ */
+export function usePendingOrder<T extends { sort_order: number }>(
+  items: T[],
+  idOf: (t: T) => string,
+  save: (items: T[], from: number, to: number) => Promise<boolean>,
+) {
+  const [order, setOrder] = useState<string[] | null>(null);
+  const [busy, setBusy] = useState(0);
+  const chain = useRef<Promise<unknown>>(Promise.resolve());
+  if (order && busy === 0 && items.map(idOf).join("\u0000") === order.join("\u0000")) setOrder(null);
+
+  let view = items;
+  if (order) {
+    const byId = new Map(items.map((t) => [idOf(t), t]));
+    const placed = order.flatMap((id) => byId.get(id) ?? []);
+    const added = items.filter((t) => !order.includes(idOf(t)));
+    // Positions as the queued saves will leave them, so the next move only rewrites what changes
+    view = [...placed, ...added].map((t, i) => ({ ...t, sort_order: (i + 1) * 10 }));
+  }
+
+  function move(from: number, to: number) {
+    if (to < 0 || to >= view.length) return;
+    const before = view;
+    const next = [...view];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setOrder(next.map(idOf));
+    setBusy((b) => b + 1);
+    chain.current = chain.current.then(async () => {
+      const ok = await save(before, from, to);
+      setBusy((b) => b - 1);
+      if (!ok) setOrder(null);
+    });
+  }
+  return [view, move] as const;
+}
+
 function friendly(e: { message: string; code?: string }) {
   if (e.code === "23503") return "This is still in use (for example by stations or bookings), so it can't be deleted. Switch it off instead.";
   if (e.code === "23505") return "That name is already taken.";
   if (e.code === "23514") return "One of the values isn't allowed. Check colours are hex codes like #7C5CFF and links start with https://.";
   if (e.code === "42501") return "Only the owner can change settings.";
+  // Safari says "Load failed", Chrome "Failed to fetch": the request never reached the server
+  if (/load failed|failed to fetch|networkerror/i.test(e.message)) return "Couldn't reach the server. Check the connection and try again.";
   return e.message;
 }
 
@@ -300,11 +374,13 @@ export async function reorder<T extends { sort_order: number }>(
   const [moved] = next.splice(from, 1);
   next.splice(to, 0, moved);
   const sb = supabaseBrowser();
-  for (let i = 0; i < next.length; i++) {
-    const order = (i + 1) * 10;
-    if (next[i].sort_order === order) continue;
-    const { error } = await sb.from(table).update({ sort_order: order }).eq(key as string, String(next[i][key]));
-    if (error) return { error };
-  }
-  return { error: null };
+  // Only rows whose position changed, all at once (one at a time took ~0.5s per row)
+  const results = await Promise.all(
+    next.flatMap((item, i) =>
+      item.sort_order === (i + 1) * 10
+        ? []
+        : [sb.from(table).update({ sort_order: (i + 1) * 10 }).eq(key as string, String(item[key]))],
+    ),
+  );
+  return { error: results.find((r) => r.error)?.error ?? null };
 }

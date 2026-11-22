@@ -6,7 +6,7 @@ import { WorldIcon } from "@/components/brand/Icon";
 import { Button, cn, ErrorNote, Input, Modal, Select } from "@/components/ui";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { Game, GameKind, StationType } from "@/lib/types";
-import { ImageUpload, reorder, Section, Toggle, useSaver } from "./shared";
+import { ImageUpload, reorder, Section, Toggle, usePending, usePendingOrder, useSaver } from "./shared";
 
 type Saver = ReturnType<typeof useSaver>;
 
@@ -14,6 +14,7 @@ export function GamesTab({ games, types, rawgEnabled }: { games: Game[]; types: 
   const saver = useSaver();
   const worldNames = types.map((t) => t.name);
   const missing = games.filter((g) => !g.cover_url && g.kind === "game");
+  const [list, move] = usePendingOrder(games, (g) => g.id, (items, from, to) => saver.run(() => reorder("games", "id", items, from, to)));
 
   return (
     <div className="space-y-6">
@@ -21,17 +22,17 @@ export function GamesTab({ games, types, rawgEnabled }: { games: Game[]; types: 
 
       {rawgEnabled && missing.length > 0 && <FillPosters missing={missing} worlds={worldNames} saver={saver} />}
 
-      {games.length > 0 && (
+      {list.length > 0 && (
         <ul className="grid gap-4 lg:grid-cols-2">
-          {games.map((g, i) => (
+          {list.map((g, i) => (
             <GameCard
               key={g.id}
               game={g}
               types={types}
               rawgEnabled={rawgEnabled}
               canUp={i > 0}
-              canDown={i < games.length - 1}
-              onMove={(dir) => saver.run(() => reorder("games", "id", games, i, i + dir))}
+              canDown={i < list.length - 1}
+              onMove={(dir) => move(i, i + dir)}
             />
           ))}
         </ul>
@@ -251,20 +252,33 @@ function GameCard({
   const [picking, setPicking] = useState(false);
   const saver = useSaver();
   const sb = supabaseBrowser();
+
+  // Toggles, type and worlds change on click; they roll back if the save fails
+  const [view, apply] = usePending(game);
+  const [removing, setRemoving] = useState(false);
   const update = (patch: Partial<Game>) => saver.run(() => sb.from("games").update(patch).eq("id", game.id));
+  const quickUpdate = (patch: Pick<Partial<Game>, "active" | "featured" | "kind">) => apply(patch, () => update(patch));
   const textDirty = name.trim() !== game.name || blurb.trim() !== game.blurb;
 
   function toggleWorld(w: string) {
-    const on = game.worlds.includes(w);
-    saver.run(() =>
-      on
-        ? sb.from("game_worlds").delete().eq("game_id", game.id).eq("world", w)
-        : sb.from("game_worlds").insert({ game_id: game.id, world: w }),
+    const on = view.worlds.includes(w);
+    apply({ worlds: on ? view.worlds.filter((x) => x !== w) : [...view.worlds, w] }, () =>
+      saver.run(() =>
+        on
+          ? sb.from("game_worlds").delete().eq("game_id", game.id).eq("world", w)
+          : sb.from("game_worlds").insert({ game_id: game.id, world: w }),
+      ),
     );
   }
 
+  async function remove() {
+    setRemoving(true); // gone straight away; comes back with the error if the delete fails
+    if (!(await saver.run(() => sb.from("games").delete().eq("id", game.id)))) setRemoving(false);
+  }
+  if (removing) return null;
+
   return (
-    <li className={cn("rounded-3xl border border-line bg-panel p-4 sm:p-5", !game.active && "opacity-60")}>
+    <li className={cn("rounded-3xl border border-line bg-panel p-4 transition-opacity sm:p-5", !view.active && "opacity-60")}>
       <div className="flex gap-4">
         <div className="flex flex-col gap-2">
           <ImageUpload
@@ -274,7 +288,7 @@ function GameCard({
             onChange={(v) => update({ cover_url: v, image_source: v ? "upload" : null, rawg_id: null })}
             className="aspect-[3/4] w-24"
           />
-          {rawgEnabled && game.kind === "game" && (
+          {rawgEnabled && view.kind === "game" && (
             <Button size="sm" variant="ghost" onClick={() => setPicking(true)}>
               <Search className="size-3.5" /> Find poster
             </Button>
@@ -289,24 +303,23 @@ function GameCard({
             </Button>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={game.kind} onChange={(e) => update({ kind: e.target.value as GameKind })} className="h-9 w-36 text-xs" aria-label="Type">
+            <Select value={view.kind} onChange={(e) => quickUpdate({ kind: e.target.value as GameKind })} className="h-9 w-36 text-xs" aria-label="Type">
               <option value="game">Video game</option>
               <option value="experience">Experience</option>
             </Select>
-            <Toggle checked={game.featured} onChange={(v) => update({ featured: v })} label="Popular" />
+            <Toggle checked={view.featured} onChange={(v) => quickUpdate({ featured: v })} label="Popular" />
           </div>
           <div>
-            <p className="mb-1.5 text-xs font-semibold text-muted">Plays on {game.worlds.length ? "" : "(none ticked = every world)"}</p>
+            <p className="mb-1.5 text-xs font-semibold text-muted">Plays on {view.worlds.length ? "" : "(none ticked = every world)"}</p>
             <div className="flex flex-wrap gap-1.5">
               {types.map((t) => {
-                const on = game.worlds.includes(t.name);
+                const on = view.worlds.includes(t.name);
                 return (
                   <button
                     key={t.name}
                     type="button"
                     onClick={() => toggleWorld(t.name)}
                     aria-pressed={on}
-                    disabled={saver.saving}
                     className={cn(
                       "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition",
                       on ? "border-transparent" : "border-line text-muted hover:border-ink/30",
@@ -324,7 +337,7 @@ function GameCard({
         </div>
       </div>
       <div className="mt-3 flex items-center gap-1 border-t border-line pt-3">
-        <Toggle checked={game.active} onChange={(v) => update({ active: v })} label={game.active ? "Shown" : "Hidden"} />
+        <Toggle checked={view.active} onChange={(v) => quickUpdate({ active: v })} label={view.active ? "Shown" : "Hidden"} />
         <span className="ml-auto" />
         <Button size="sm" variant="ghost" onClick={() => onMove(-1)} disabled={!canUp} aria-label="Move up">
           <ArrowUp className="size-4" />
@@ -336,7 +349,7 @@ function GameCard({
           size="sm"
           variant="ghost"
           className="text-rose-300"
-          onClick={() => saver.run(() => sb.from("games").delete().eq("id", game.id))}
+          onClick={remove}
           aria-label={`Delete ${game.name}`}
         >
           <Trash2 className="size-4" />

@@ -140,22 +140,31 @@ export function Modal({
   onClose,
   title,
   children,
+  flush = false,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
+  /** Children handle their own padding and scrolling (e.g. a scroll area plus a pinned footer). */
+  flush?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
-    if (open && !d.open) d.showModal();
+    if (open && !d.open) {
+      d.showModal();
+      // showModal() focuses the first focusable thing (the close button), which shows a stray focus
+      // ring. Focus the marked field instead, or the dialog itself.
+      (d.querySelector<HTMLElement>("[data-autofocus]") ?? d).focus({ preventScroll: true });
+    }
     if (!open && d.open) d.close();
   }, [open]);
   return (
     <dialog
       ref={ref}
+      tabIndex={-1}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
       // Phones: a bottom sheet (full width, slides up, inner scroll); wider screens: a centred card
@@ -172,7 +181,11 @@ export function Modal({
           ✕
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{open && children}</div>
+      {flush ? (
+        <div className="flex min-h-0 flex-1 flex-col">{open && children}</div>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{open && children}</div>
+      )}
     </dialog>
   );
 }

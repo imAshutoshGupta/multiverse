@@ -2,6 +2,7 @@
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button, cn, ErrorNote, PayBadge, payText, STATUS_STYLE, StatusBadge } from "@/components/ui";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { useLiveBookings } from "@/components/staff/useBookings";
 import type { InitialBookings } from "@/lib/bookingsWindow";
 import { formatINR, stationPricing, stationRate } from "@/lib/availability";
@@ -55,16 +56,7 @@ export function Board({
   const [date, setDateState] = useState(initialDate);
   const [target, setTarget] = useState<DialogTarget | null>(null);
   const [hover, setHover] = useState<HoverTarget | null>(null);
-  const dateInput = useRef<HTMLInputElement>(null);
-  const openDatePicker = () => {
-    const el = dateInput.current;
-    if (!el) return;
-    try {
-      el.showPicker();
-    } catch {
-      el.focus(); // older browsers: focus the field so arrow keys / typing work
-    }
-  };
+  const closedDays = useMemo(() => new Map(closures.map((c) => [c.date, c.reason || null])), [closures]);
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const showHover = (booking: Booking, el: HTMLElement, delay = 120) => {
     clearTimeout(hoverTimer.current);
@@ -198,39 +190,45 @@ export function Board({
         <Button variant="outline" className={cn(NAV_BTN, "order-1")} onClick={() => setDate(addDays(date, -1))} aria-label="Previous day">
           ←
         </Button>
-        <label className="relative order-2 min-w-0 flex-1 sm:order-4 sm:flex-none">
-          <h1 className="flex items-center justify-center gap-1.5 truncate font-display text-lg font-semibold sm:justify-start sm:text-xl">
-            {fmtDay(date)}
-            <CalendarDays className="size-4 shrink-0 text-muted sm:hidden" aria-hidden />
+        <div className="order-2 min-w-0 flex-1 sm:order-4 sm:flex-none">
+          <h1 className="truncate text-center font-display text-lg font-semibold sm:text-left sm:text-xl">
+            {/* Phones: the title itself opens the calendar */}
+            <DatePicker
+              value={date}
+              onChange={setDate}
+              closed={closedDays}
+              trigger={(p) => (
+                <button
+                  {...p}
+                  type="button"
+                  aria-label={`${fmtDay(date)}, pick a date`}
+                  className="inline-flex max-w-full cursor-pointer items-center gap-1.5 rounded-lg px-1 sm:hidden"
+                >
+                  <span className="truncate">{fmtDay(date)}</span>
+                  <CalendarDays className="size-4 shrink-0 text-muted" aria-hidden />
+                </button>
+              )}
+            />
+            <span className="hidden sm:inline">{fmtDay(date)}</span>
           </h1>
-          {/* Invisible native date picker over the title, phones only */}
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => e.target.value && setDate(e.target.value)}
-            aria-label="Pick a date"
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0 sm:hidden"
-          />
-        </label>
+        </div>
         <Button variant="outline" className={cn(NAV_BTN, "order-3")} onClick={() => setDate(addDays(date, 1))} aria-label="Next day">
           →
         </Button>
         <Button variant={isToday ? "primary" : "outline"} className={cn(NAV_BTN, "order-4 sm:order-2")} onClick={() => setDate(istDate())}>
           Today
         </Button>
-        {/* Wider screens: a button that opens the browser's date picker (the title already shows the date) */}
-        <span className="relative order-5 hidden sm:inline-flex">
-          <Button variant="outline" className={NAV_BTN} onClick={openDatePicker} aria-label="Pick a date">
-            <CalendarDays className="size-4" aria-hidden /> Pick date
-          </Button>
-          <input
-            ref={dateInput}
-            type="date"
+        {/* Wider screens: a button that opens the calendar (the title already shows the date) */}
+        <span className="order-5 hidden sm:inline-flex">
+          <DatePicker
             value={date}
-            onChange={(e) => e.target.value && setDate(e.target.value)}
-            tabIndex={-1}
-            aria-hidden
-            className="pointer-events-none absolute bottom-0 left-0 h-px w-px opacity-0"
+            onChange={setDate}
+            closed={closedDays}
+            trigger={(p) => (
+              <Button {...p} variant="outline" className={NAV_BTN} aria-label="Pick a date">
+                <CalendarDays className="size-4" aria-hidden /> Pick date
+              </Button>
+            )}
           />
         </span>
         <Button className="order-6 w-full sm:ml-auto sm:w-auto" onClick={() => setTarget({ mode: "new" })}>

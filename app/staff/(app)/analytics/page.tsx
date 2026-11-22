@@ -6,6 +6,7 @@ import { Analytics } from "@/components/bookings/Analytics";
 import { MoreFilters } from "@/components/bookings/MoreFilters";
 import { PageSkeleton } from "@/components/Skeletons";
 import { PayBadge, Select, StatusBadge } from "@/components/ui";
+import { DateField } from "@/components/ui/DatePicker";
 import { analyze, buildRows } from "@/lib/analytics";
 import { formatINR } from "@/lib/availability";
 import { filtersQuery, parseFilters, queryBookings, type BookingFilters } from "@/lib/bookingQuery";
@@ -117,11 +118,11 @@ async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/analytic
       <form key={exportQs} className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-line bg-panel p-3 sm:grid-cols-3 lg:grid-cols-5">
         <label className="flex flex-col gap-1 text-xs text-muted">
           From
-          <input type="date" name="from" defaultValue={filters.from} className={input} />
+          <DateField name="from" defaultValue={filters.from} aria-label="From" placeholder="Any day" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted">
           To
-          <input type="date" name="to" defaultValue={filters.to} className={input} />
+          <DateField name="to" defaultValue={filters.to} aria-label="To" placeholder="Any day" />
         </label>
         <label className="col-span-2 flex flex-col gap-1 text-xs text-muted sm:col-span-1">
           Search

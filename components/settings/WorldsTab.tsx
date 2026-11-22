@@ -7,7 +7,7 @@ import { priceLabel } from "@/lib/availability";
 import { onColor } from "@/lib/brand";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { Station, StationType } from "@/lib/types";
-import { ColorField, ImageUpload, isDirty, reorder, SaveBar, Section, Toggle, useSaver } from "./shared";
+import { ColorField, ImageUpload, isDirty, reorder, SaveBar, Section, Toggle, usePending, usePendingOrder, useSaver } from "./shared";
 
 const COLORS = ["#3D7BFF", "#21C46B", "#FF4F9A", "#FF8A3D", "#16C7D9", "#B36BFF", "#FFC23D", "#E5484D"];
 
@@ -15,6 +15,7 @@ export function WorldsTab({ types, stations }: { types: StationType[]; stations:
   const [name, setName] = useState("");
   const saver = useSaver();
   const sb = supabaseBrowser();
+  const [list, move] = usePendingOrder(types, (t) => t.name, (items, from, to) => saver.run(() => reorder("station_types", "name", items, from, to)));
 
   return (
     <div className="space-y-6">
@@ -47,14 +48,14 @@ export function WorldsTab({ types, stations }: { types: StationType[]; stations:
         {saver.error && <p className="mt-2 text-sm text-rose-300">{saver.error}</p>}
       </Section>
 
-      {types.map((t, i) => (
+      {list.map((t, i) => (
         <WorldEditor
           key={t.name}
           world={t}
           stationCount={stations.filter((s) => s.type === t.name).length}
           canUp={i > 0}
-          canDown={i < types.length - 1}
-          onMove={(dir) => saver.run(() => reorder("station_types", "name", types, i, i + dir))}
+          canDown={i < list.length - 1}
+          onMove={(dir) => move(i, i + dir)}
         />
       ))}
     </div>
@@ -77,11 +78,18 @@ function WorldEditor({
   const [w, setW] = useState(world);
   const saver = useSaver();
   const sb = supabaseBrowser();
+  const [view, apply] = usePending({ active: world.active });
+  const [removing, setRemoving] = useState(false);
+  async function remove() {
+    setRemoving(true); // gone straight away; comes back with the error if the delete fails
+    if (!(await saver.run(() => sb.from("station_types").delete().eq("name", world.name)))) setRemoving(false);
+  }
   const set = <K extends keyof StationType>(k: K, v: StationType[K]) => setW((p) => ({ ...p, [k]: v }));
   const fg = onColor(w.color);
+  if (removing) return null;
 
   return (
-    <section className={cn("overflow-hidden rounded-3xl border border-line bg-panel", !world.active && "opacity-70")}>
+    <section className={cn("overflow-hidden rounded-3xl border border-line bg-panel transition-opacity", !view.active && "opacity-70")}>
       <div className="grid md:grid-cols-[18rem_1fr]">
         {/* Live card preview */}
         <div className="relative flex min-h-64 flex-col justify-between overflow-hidden p-5" style={{ backgroundColor: w.color, color: fg }}>
@@ -125,9 +133,9 @@ function WorldEditor({
         >
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <Toggle
-              checked={world.active}
-              onChange={(v) => saver.run(() => sb.from("station_types").update({ active: v }).eq("name", world.name))}
-              label={world.active ? "Shown to customers" : "Hidden from customers"}
+              checked={view.active}
+              onChange={(v) => apply({ active: v }, () => saver.run(() => sb.from("station_types").update({ active: v }).eq("name", world.name)))}
+              label={view.active ? "Shown to customers" : "Hidden from customers"}
             />
             <div className="ml-auto flex gap-1">
               <Button type="button" variant="ghost" size="sm" onClick={() => onMove(-1)} disabled={!canUp} aria-label="Move up">
@@ -143,7 +151,7 @@ function WorldEditor({
                 className="text-rose-300"
                 disabled={stationCount > 0}
                 title={stationCount > 0 ? "Move or delete its stations first" : undefined}
-                onClick={() => saver.run(() => sb.from("station_types").delete().eq("name", world.name))}
+                onClick={remove}
               >
                 <Trash2 className="size-4" /> Delete
               </Button>
@@ -207,7 +215,8 @@ function WorldEditor({
               className="aspect-video w-48"
             />
           </div>
-          <SaveBar saver={saver} dirty={isDirty(world, w)} />
+          {/* Position and visibility save on their own, so they don't count as unsaved edits */}
+          <SaveBar saver={saver} dirty={isDirty({ ...world, sort_order: 0, active: true }, { ...w, sort_order: 0, active: true })} />
         </form>
       </div>
     </section>

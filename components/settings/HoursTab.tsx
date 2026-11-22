@@ -2,6 +2,7 @@
 import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button, cn, Input } from "@/components/ui";
+import { DateField } from "@/components/ui/DatePicker";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { fmtLongDay, istDate, WEEKDAYS } from "@/lib/time";
 import type { Closure, Settings, WeeklyHours } from "@/lib/types";
@@ -84,7 +85,30 @@ function Closures({ closures }: { closures: Closure[] }) {
   const [reason, setReason] = useState("");
   const saver = useSaver();
   const sb = supabaseBrowser();
-  const upcoming = closures.filter((c) => c.date >= today);
+  // Adds and removals show straight away; each rolls back if its save fails
+  const [added, setAdded] = useState<Closure[]>([]);
+  const [gone, setGone] = useState<string[]>([]);
+  const upcoming = [...closures, ...added.filter((a) => !closures.some((c) => c.date === a.date))]
+    .filter((c) => c.date >= today && !gone.includes(c.date))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  async function add() {
+    const row = { date, reason: reason.trim() };
+    setAdded((l) => [...l.filter((c) => c.date !== row.date), row]);
+    setGone((g) => g.filter((d) => d !== row.date));
+    setDate("");
+    setReason("");
+    if (!(await saver.run(() => sb.from("closures").upsert(row)))) {
+      setAdded((l) => l.filter((c) => c !== row));
+      setDate(row.date);
+      setReason(row.reason);
+    }
+  }
+  async function remove(day: string) {
+    setGone((g) => [...g, day]);
+    setAdded((l) => l.filter((c) => c.date !== day));
+    if (!(await saver.run(() => sb.from("closures").delete().eq("date", day)))) setGone((g) => g.filter((d) => d !== day));
+  }
 
   return (
     <Section title="Holidays and closed days" description="Online booking is turned off for these dates. Staff can still add bookings on the dashboard.">
@@ -92,17 +116,15 @@ function Closures({ closures }: { closures: Closure[] }) {
         className="flex flex-wrap items-end gap-2"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (!date) return;
-          const ok = await saver.run(() => sb.from("closures").upsert({ date, reason: reason.trim() }));
-          if (ok) {
-            setDate("");
-            setReason("");
-          }
+          if (!date) return saver.setError("Pick the day you're closed.");
+          await add();
         }}
       >
-        <Input type="date" value={date} min={today} onChange={(e) => setDate(e.target.value)} className="w-44" required aria-label="Date" />
+        <div className="w-48">
+          <DateField value={date} min={today} onChange={setDate} placeholder="Pick a day" aria-label="Date" />
+        </div>
         <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, e.g. Diwali" maxLength={80} className="max-w-64" aria-label="Reason" />
-        <Button type="submit" variant="outline" disabled={saver.saving}>
+        <Button type="submit" variant="outline">
           Add closed day
         </Button>
       </form>
@@ -119,7 +141,7 @@ function Closures({ closures }: { closures: Closure[] }) {
                 variant="ghost"
                 size="sm"
                 className="ml-auto text-rose-300"
-                onClick={() => saver.run(() => sb.from("closures").delete().eq("date", c.date))}
+                onClick={() => remove(c.date)}
                 aria-label={`Reopen ${fmtLongDay(c.date)}`}
               >
                 <Trash2 className="size-3.5" /> Remove
