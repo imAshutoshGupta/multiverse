@@ -20,7 +20,7 @@ async function makeDb() {
   const pg = new PGlite({ extensions: { btree_gist } });
   const db = { exec: (q) => pg.exec(sub(q)), query: (q, p) => pg.query(sub(q), p?.map(sub)) };
   await db.exec(`
-    create role anon nologin; create role authenticated nologin;
+    create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
     create schema auth;
     create table auth.users (id uuid primary key, email text);
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
@@ -58,7 +58,7 @@ console.log('test day', D);
 // ---------------------------------------------------------------------------
 {
   const db = await makeDb();
-  for (const f of ['migrations/0001_init.sql', 'migrations/0002_grants.sql', 'migrations/0003_config.sql', 'migrations/0004_games_first.sql', 'migrations/0005_rls_perf.sql', 'migrations/0006_payments.sql']) await db.exec(read(f));
+  for (const f of ['migrations/0001_init.sql', 'migrations/0002_grants.sql', 'migrations/0003_config.sql', 'migrations/0004_games_first.sql', 'migrations/0005_rls_perf.sql', 'migrations/0006_payments.sql', 'migrations/0007_service_role.sql']) await db.exec(read(f));
   await db.exec(`update settings set open_time='11:00', close_time='02:00'`);
   await db.exec(read('seed.sql'));
   await db.exec(read('seed.sql')); // seed is safe to re-run
@@ -68,6 +68,13 @@ console.log('test day', D);
   ok((await c('bookings')) === 6, 'seed bookings inserted once');
   await db.exec(`delete from bookings`);
   await addUsers(db);
+
+  // Server-side secret key (Settings → Staff)
+  await as(db, 'service_role');
+  ok((await db.query(`select count(*)::int c from staff_profiles`)).rows[0].c === 2, 'service_role can read staff_profiles');
+  await db.query(`update staff_profiles set display_name = 'Boss' where role = 'owner'`);
+  ok(true, 'service_role can update staff_profiles');
+  await as(db, null);
 
   const w = (await db.query(`select * from business_window('$D')`)).rows[0];
   ok(w.opens_at.toISOString() === D + 'T05:30:00.000Z' && w.closes_at.toISOString() === D + 'T20:30:00.000Z', 'window wraps past midnight');

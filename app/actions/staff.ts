@@ -24,7 +24,14 @@ async function run<T>(fn: () => Promise<T>): Promise<Result<T>> {
   try {
     return { ok: true, data: await fn() };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Something went wrong." };
+    const msg = e instanceof Error ? e.message : "Something went wrong.";
+    if (/permission denied for (table|schema)/i.test(msg)) {
+      return {
+        ok: false,
+        error: "The database hasn't given the server key access yet. Run supabase/migrations/0007_service_role.sql in the Supabase SQL Editor, then reload.",
+      };
+    }
+    return { ok: false, error: msg };
   }
 }
 
