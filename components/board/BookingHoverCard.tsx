@@ -83,7 +83,7 @@ export function BookingHoverCard({
           </>
         )}
         <dt className="text-muted">Booked</dt>
-        <dd>{b.source === "online" ? "🌐 Online request" : "By staff"}</dd>
+        <dd>{b.source === "online" ? "Online, by the customer" : "By staff"}</dd>
       </dl>
 
       {pay && (

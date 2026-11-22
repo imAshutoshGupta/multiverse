@@ -1,21 +1,25 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { Analytics } from "@/components/bookings/Analytics";
 import { PageSkeleton } from "@/components/Skeletons";
-import { PayBadge, StatusBadge } from "@/components/ui";
+import { PayBadge, Select, StatusBadge } from "@/components/ui";
+import { analyze, buildRows } from "@/lib/analytics";
 import { formatINR } from "@/lib/availability";
-import { parseFilters, queryBookings } from "@/lib/bookingQuery";
+import { filtersQuery, parseFilters, queryBookings, type BookingFilters } from "@/lib/bookingQuery";
 import { loadCatalog } from "@/lib/catalog";
-import { bookingPay, matchesPayFilter, PAY_FILTERS, paymentsReady } from "@/lib/payments";
+import { matchesPayFilter, PAY_FILTERS, paymentsReady } from "@/lib/payments";
 import { displayPhone } from "@/lib/phone";
 import { requestToday } from "@/lib/serverTime";
-import { addDays, businessDateOf, fmtDay, fmtTime } from "@/lib/time";
+import { addDays, fmtDay, fmtTime } from "@/lib/time";
 import { STATUS_LABEL } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Bookings" };
 
 const input =
   "h-10 rounded-xl border border-line bg-panel-2 px-3 text-sm text-ink outline-none focus:border-portal";
+/** Rows drawn in the table; the Excel download always has everything. */
+const TABLE_LIMIT = 300;
 
 export default function BookingsPage({ searchParams }: PageProps<"/staff/bookings">) {
   return (
@@ -25,49 +29,51 @@ export default function BookingsPage({ searchParams }: PageProps<"/staff/booking
   );
 }
 
+/** Quick date ranges. Month ranges are calendar months in IST. */
+function ranges(today: string): [string, string, string][] {
+  const monthStart = `${today.slice(0, 8)}01`;
+  const lastMonthEnd = addDays(monthStart, -1);
+  const lastMonthStart = `${lastMonthEnd.slice(0, 8)}01`;
+  const dow = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7; // Monday = 0
+  const weekStart = addDays(today, -dow);
+  return [
+    ["Today", today, today],
+    ["Yesterday", addDays(today, -1), addDays(today, -1)],
+    ["Next 7 days", today, addDays(today, 6)],
+    ["This week", weekStart, addDays(weekStart, 6)],
+    ["Last 7 days", addDays(today, -6), today],
+    ["This month", monthStart, addDays(`${addDays(monthStart, 32).slice(0, 8)}01`, -1)],
+    ["Last month", lastMonthStart, lastMonthEnd],
+    ["Last 30 days", addDays(today, -29), today],
+    ["Last 90 days", addDays(today, -89), today],
+  ];
+}
+
 async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/bookings">, "searchParams">) {
   const params = await searchParams;
   const { supabase, settings, stations, types, games } = await loadCatalog(); // request-time from here
   const today = await requestToday();
   const filters = parseFilters(params, today);
-  const loaded = await queryBookings(supabase, settings, filters);
-  const stationById = new Map(stations.map((s) => [s.id, s]));
+  const loaded = await queryBookings(supabase, settings, filters, stations);
   const payReady = loaded.length === 0 || paymentsReady(loaded[0]);
-  const withPay = loaded.map((b) => ({ b, pay: bookingPay(b, stationById.get(b.station_id), types) }));
-  const rows = withPay.filter(({ pay }) => matchesPayFilter(pay, filters.pay));
-  const gameById = new Map(games.map((g) => [g.id, g]));
-  const exportQs = new URLSearchParams(
-    Object.entries(filters).filter(([, v]) => v) as [string, string][],
-  ).toString();
-  const revenue = rows
-    .filter(({ b }) => ["confirmed", "arrived", "completed"].includes(b.status))
-    .reduce((sum, { pay }) => sum + pay.total, 0);
-  const collected = rows.reduce((sum, { pay }) => sum + pay.paid, 0);
-  const due = rows.reduce((sum, { pay }) => sum + pay.due, 0);
-  const dueCustomers = rows.filter(({ pay }) => pay.due > 0).length;
-  const duesHref = `/staff/bookings?from=${addDays(today, -30)}&to=${today}&pay=due`;
+  const rows = buildRows(loaded, { stations, games, types, settings }).filter((r) => matchesPayFilter(r.pay, filters.pay));
+  const a = analyze(rows);
+  const exportQs = filtersQuery(filters);
+  const duesHref = `/staff/bookings?${filtersQuery(filters, { pay: "due" })}`;
+  const worlds = [...new Set(stations.map((s) => s.type))];
+  const stationOptions = stations.filter((s) => !filters.world || s.type === filters.world);
+  const activeFilters = (["status", "pay", "world", "station", "source", "game", "q"] as (keyof BookingFilters)[]).filter((k) => filters[k]).length;
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6">
+    <main className="mx-auto w-full max-w-7xl px-4 py-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-semibold">Bookings</h1>
           <p className="text-sm text-muted">
-            {rows.length} booking{rows.length === 1 ? "" : "s"} · {formatINR(revenue)} confirmed value
-            {payReady && (
-              <>
-                {" "}· <span className="text-emerald-300">{formatINR(collected)} collected</span> ·{" "}
-                <span className={due ? "text-rose-300" : undefined}>
-                  {formatINR(due)} due{dueCustomers ? ` from ${dueCustomers} customer${dueCustomers > 1 ? "s" : ""}` : ""}
-                </span>
-              </>
-            )}
+            {fmtDay(filters.from)}
+            {filters.to !== filters.from && ` – ${fmtDay(filters.to)}`} · {rows.length} booking{rows.length === 1 ? "" : "s"}
+            {activeFilters > 0 && ` · ${activeFilters} filter${activeFilters > 1 ? "s" : ""} on`}
           </p>
-          {payReady && (
-            <Link href={duesHref} className="mt-1 inline-block text-xs font-semibold text-portal hover:underline">
-              Who still owes money? (last 30 days) →
-            </Link>
-          )}
           {!payReady && (
             <p className="mt-1 text-xs text-amber-300">
               Payments need a database update: run supabase/migrations/0006_payments.sql in the Supabase SQL Editor.
@@ -76,13 +82,33 @@ async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/bookings
         </div>
         <a
           href={`/api/export?${exportQs}`}
-          className="inline-flex h-10 items-center rounded-xl border border-line px-4 text-sm font-semibold hover:border-portal/60"
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-portal px-4 text-sm font-semibold text-on-portal hover:bg-portal-strong"
+          title="Excel file with Summary, Bookings, Payments, Customers and Daily sheets"
         >
-          ⬇ Download for Excel
+          ⬇ Download Excel report
         </a>
       </div>
 
-      <form className="mt-4 flex flex-wrap items-end gap-2 rounded-2xl border border-line bg-panel p-3">
+      {/* Quick ranges */}
+      <nav className="no-scrollbar mt-4 flex gap-1.5 overflow-x-auto" aria-label="Date range">
+        {ranges(today).map(([label, from, to]) => {
+          const on = filters.from === from && filters.to === to;
+          return (
+            <Link
+              key={label}
+              href={`/staff/bookings?${filtersQuery(filters, { from, to })}`}
+              className={[
+                "shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                on ? "border-portal bg-portal text-on-portal" : "border-line text-muted hover:border-portal/60 hover:text-ink",
+              ].join(" ")}
+            >
+              {label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      <form key={exportQs} className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-line bg-panel p-3 sm:grid-cols-3 lg:grid-cols-5">
         <label className="flex flex-col gap-1 text-xs text-muted">
           From
           <input type="date" name="from" defaultValue={filters.from} className={input} />
@@ -91,39 +117,54 @@ async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/bookings
           To
           <input type="date" name="to" defaultValue={filters.to} className={input} />
         </label>
-        <label className="flex flex-col gap-1 text-xs text-muted">
-          Status
-          <select name="status" defaultValue={filters.status} className={input}>
-            <option value="">All</option>
-            {Object.entries(STATUS_LABEL).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted">
-          Payment
-          <select name="pay" defaultValue={filters.pay} className={input}>
-            <option value="">All</option>
-            {Object.entries(PAY_FILTERS).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs text-muted">
+        <FilterSelect label="Status" name="status" value={filters.status} options={Object.entries(STATUS_LABEL)} />
+        <FilterSelect label="Payment" name="pay" value={filters.pay} options={Object.entries(PAY_FILTERS)} />
+        <FilterSelect
+          label="Booked"
+          name="source"
+          value={filters.source}
+          options={[
+            ["online", "Online by customer"],
+            ["staff", "By staff"],
+          ]}
+        />
+        <FilterSelect label="World" name="world" value={filters.world} options={worlds.map((w) => [w, w])} />
+        <FilterSelect
+          label="Station"
+          name="station"
+          value={filters.station}
+          options={stationOptions.map((s) => [s.id, s.name + (s.active ? "" : " (inactive)")])}
+        />
+        <FilterSelect
+          label="Game"
+          name="game"
+          value={filters.game}
+          options={[["none", "No game picked"], ...games.map((g) => [g.id, g.name] as [string, string])]}
+        />
+        <label className="col-span-2 flex flex-col gap-1 text-xs text-muted sm:col-span-1 lg:col-span-1">
           Search
           <input name="q" defaultValue={filters.q} placeholder="Name or phone" className={input} />
         </label>
-        <button className="h-10 cursor-pointer rounded-xl bg-portal px-4 text-sm font-semibold text-on-portal hover:bg-portal-strong">
-          Apply
-        </button>
+        <div className="col-span-2 flex items-end gap-2 sm:col-span-3 lg:col-span-1">
+          <button className="h-10 flex-1 cursor-pointer rounded-xl bg-portal px-4 text-sm font-semibold text-on-portal hover:bg-portal-strong">
+            Apply
+          </button>
+          {activeFilters > 0 && (
+            <Link
+              href={`/staff/bookings?from=${filters.from}&to=${filters.to}`}
+              className="inline-flex h-10 items-center rounded-xl border border-line px-3 text-sm font-semibold text-muted hover:text-ink"
+            >
+              Clear
+            </Link>
+          )}
+        </div>
       </form>
 
-      <div className="mt-4 overflow-x-auto rounded-2xl border border-line bg-panel">
-        <table className="w-full min-w-[900px] text-sm">
+      <Analytics a={a} duesHref={duesHref} payReady={payReady} />
+
+      <h2 className="mt-6 font-display text-lg font-semibold">All bookings</h2>
+      <div className="mt-2 overflow-x-auto rounded-2xl border border-line bg-panel">
+        <table className="w-full min-w-[960px] text-sm">
           <thead className="border-b border-line text-left text-xs uppercase tracking-wider text-muted">
             <tr>
               <th className="px-4 py-3">When</th>
@@ -144,49 +185,68 @@ async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/bookings
                 </td>
               </tr>
             )}
-            {rows.map(({ b, pay }) => {
-              const st = stationById.get(b.station_id);
-              const day = businessDateOf(b.starts_at, settings);
-              return (
-                <tr key={b.id} className="hover:bg-tint/[0.03]">
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <Link href={`/staff?date=${day}`} className="hover:underline">
-                      <div className="font-semibold">{fmtDay(day)}</div>
-                      <div className="text-xs text-muted">
-                        {fmtTime(b.starts_at)}–{fmtTime(b.ends_at)}
-                      </div>
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="font-semibold">
-                      {b.customer_name}
-                      {b.party_size > 1 && <span className="font-normal text-muted"> ×{b.party_size}</span>}
+            {rows.slice(0, TABLE_LIMIT).map(({ b, pay, station: st, game, day }) => (
+              <tr key={b.id} className="hover:bg-tint/[0.03]">
+                <td className="whitespace-nowrap px-4 py-3">
+                  <Link href={`/staff?date=${day}`} className="hover:underline">
+                    <div className="font-semibold">{fmtDay(day)}</div>
+                    <div className="text-xs text-muted">
+                      {fmtTime(b.starts_at)}–{fmtTime(b.ends_at)}
                     </div>
-                    <div className="text-xs text-muted">{displayPhone(b.phone)}</div>
-                  </td>
-                  <td className="px-4 py-3">{st?.name}</td>
-                  <td className="px-4 py-3 text-muted">{b.game_id ? gameById.get(b.game_id)?.name : ""}</td>
-                  <td className="px-4 py-3 text-right font-mono">
-                    {st ? formatINR(pay.total) : ""}
-                    {b.price != null && <div className="text-[10px] text-muted">custom</div>}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-emerald-300">{pay.paid ? formatINR(pay.paid) : "–"}</td>
-                  <td className={`px-4 py-3 text-right font-mono ${pay.due ? "font-semibold text-rose-300" : "text-muted"}`}>
-                    {pay.due ? formatINR(pay.due) : "–"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-1">
-                      <StatusBadge status={b.status} />
-                      {payReady && <PayBadge pay={pay} compact />}
-                    </div>
-                    {b.source === "online" && <span className="ml-1 text-xs" title="Online request">🌐</span>}
-                  </td>
-                </tr>
-              );
-            })}
+                  </Link>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="font-semibold">
+                    {b.customer_name}
+                    {b.party_size > 1 && <span className="font-normal text-muted"> ×{b.party_size}</span>}
+                  </div>
+                  <div className="text-xs text-muted">{displayPhone(b.phone)}</div>
+                </td>
+                <td className="px-4 py-3">
+                  {st?.name}
+                  <div className="text-xs text-muted">{st?.type}</div>
+                </td>
+                <td className="px-4 py-3 text-muted">{game?.name ?? ""}</td>
+                <td className="px-4 py-3 text-right font-mono">
+                  {st ? formatINR(pay.total) : ""}
+                  {b.price != null && <div className="text-[10px] text-muted">custom</div>}
+                </td>
+                <td className="px-4 py-3 text-right font-mono text-emerald-300">{pay.paid ? formatINR(pay.paid) : "–"}</td>
+                <td className={`px-4 py-3 text-right font-mono ${pay.due ? "font-semibold text-rose-300" : "text-muted"}`}>
+                  {pay.due ? formatINR(pay.due) : "–"}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-1">
+                    <StatusBadge status={b.status} />
+                    {payReady && <PayBadge pay={pay} compact />}
+                  </div>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
+        {rows.length > TABLE_LIMIT && (
+          <p className="border-t border-line px-4 py-3 text-center text-xs text-muted">
+            Showing the first {TABLE_LIMIT} of {rows.length}. The Excel report has all of them.
+          </p>
+        )}
       </div>
     </main>
+  );
+}
+
+function FilterSelect({ label, name, value, options }: { label: string; name: string; value: string; options: [string, string][] }) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1 text-xs text-muted">
+      {label}
+      <Select name={name} defaultValue={value} aria-label={label}>
+        <option value="">All</option>
+        {options.map(([k, v]) => (
+          <option key={k} value={k}>
+            {v}
+          </option>
+        ))}
+      </Select>
+    </label>
   );
 }

@@ -157,3 +157,64 @@ test("payment filters", () => {
   assert.deepEqual([unpaid, adv, paid, gone].map((s) => matchesPayFilter(s, "paid")), [false, false, true, false]);
   assert.ok([unpaid, adv, paid, gone].every((s) => matchesPayFilter(s, "")));
 });
+
+import { analyze, buildRows, customerKey, istHour } from "../lib/analytics";
+import { buildXlsx, colName, crc32, excelDay } from "../lib/xlsx";
+import { inflateRawSync } from "node:zlib";
+
+test("analytics: revenue, collected, dues, customers and breakdowns", () => {
+  const types = [{ name: "PS5", hourly_rate: 150, pricing: "per_station" }] as never[];
+  const stations = [{ id: "s1", name: "PS5 1", type: "PS5", hourly_rate: null }] as never[];
+  const pay = (id: string, amount: number, kind = "payment", method = "upi") => ({ id, booking_id: "x", amount, kind, method, note: null, created_by: null, created_at: "2026-11-22T05:00:00Z" });
+  const base = { station_id: "s1", game_id: null, party_size: 2, source: "staff", notes: null, created_at: "2026-11-20T00:00:00Z", updated_at: "2026-11-20T00:00:00Z" };
+  const bookings = [
+    { ...base, id: "a", customer_name: "Riya", phone: "919800000001", starts_at: "2026-11-22T10:30:00Z", ends_at: "2026-11-22T12:30:00Z", status: "completed", price: null, paid_amount: 300, booking_payments: [pay("p1", 100), pay("p2", 200, "payment", "cash")] },
+    { ...base, id: "b", customer_name: "riya", phone: "919800000001", starts_at: "2026-11-23T10:30:00Z", ends_at: "2026-11-23T11:30:00Z", status: "confirmed", price: 100, paid_amount: 40, booking_payments: [pay("p3", 40)] },
+    { ...base, id: "c", customer_name: "Tom", phone: null, source: "online", starts_at: "2026-11-23T12:30:00Z", ends_at: "2026-11-23T13:30:00Z", status: "cancelled", price: null, paid_amount: 0, booking_payments: [pay("p4", 150), pay("p5", 150, "refund")] },
+  ];
+  const rows = buildRows(bookings as never, { stations, games: [], types, settings: { open_time: "11:00:00", close_time: "23:00:00", slot_minutes: 30 } });
+  const a = analyze(rows);
+  assert.equal(a.bookings, 2, "cancelled not counted");
+  assert.equal(a.revenue, 300 + 100, "custom price used");
+  assert.equal(a.collected, 340);
+  assert.equal(a.due, 60);
+  assert.equal(a.dueCustomers, 1);
+  assert.equal(a.discounts, 50, "standard 150 vs agreed 100");
+  assert.equal(a.customers, 1, "same phone = same customer");
+  assert.equal(a.repeatCustomers, 1);
+  assert.equal(a.online, 1);
+  assert.equal(a.refunds, 150);
+  assert.deepEqual(a.byMethod.map((m) => [m.method, m.amount]), [["upi", 140], ["cash", 200]].sort((x, y) => (y[1] as number) - (x[1] as number)));
+  assert.equal(a.byHour[16], 2, "both start at 4 pm IST");
+  assert.equal(a.byDay.length, 2);
+  assert.equal(customerKey({ phone: null, customer_name: " Tom " }), "n:tom");
+  assert.equal(istHour("2026-11-22T18:29:00Z"), 23);
+});
+
+test("xlsx writer produces a valid zip with real numbers", () => {
+  assert.equal(colName(0), "A");
+  assert.equal(colName(25), "Z");
+  assert.equal(colName(26), "AA");
+  assert.equal(colName(702), "AAA");
+  assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
+  assert.equal(excelDay("1970-01-01"), 25569);
+  const file = buildXlsx([{ name: "Bad/Name:*?", header: true, rows: [["A", "B"], [{ v: 5, f: "money" }, "x < y & \u0001z"]] }]);
+  const view = new DataView(file.buffer, file.byteOffset);
+  assert.equal(view.getUint32(0, true), 0x04034b50, "zip signature");
+  assert.equal(view.getUint32(file.length - 22, true), 0x06054b50, "end of central directory");
+  // Find and inflate the worksheet
+  const text = new TextDecoder();
+  let at = 0;
+  const files: Record<string, string> = {};
+  while (view.getUint32(at, true) === 0x04034b50) {
+    const size = view.getUint32(at + 18, true);
+    const nameLen = view.getUint16(at + 26, true);
+    const name = text.decode(file.subarray(at + 30, at + 30 + nameLen));
+    files[name] = text.decode(inflateRawSync(file.subarray(at + 30 + nameLen, at + 30 + nameLen + size)));
+    at += 30 + nameLen + size;
+  }
+  assert.match(files["xl/workbook.xml"], /name="Bad Name"/, "sheet name cleaned");
+  assert.match(files["xl/worksheets/sheet1.xml"], /<c r="A2" s="2"><v>5<\/v><\/c>/, "money stored as a number");
+  assert.match(files["xl/worksheets/sheet1.xml"], /x &lt; y &amp; z/, "escaped, control chars dropped");
+  assert.match(files["xl/worksheets/sheet1.xml"], /autoFilter ref="A1:B2"/);
+});

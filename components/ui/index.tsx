@@ -67,9 +67,8 @@ export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
   return <textarea className={cn(field, "py-2 min-h-16", className)} {...props} />;
 }
 
-export function Select({ className, ...props }: ComponentProps<"select">) {
-  return <select className={cn(field, "h-10 pr-8", className)} {...props} />;
-}
+/** App-styled dropdown (same API as <select>). */
+export { Select } from "./Select";
 
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   return (
