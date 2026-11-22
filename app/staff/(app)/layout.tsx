@@ -46,7 +46,8 @@ async function StaffGate({ children, logo, cafe }: { children: React.ReactNode; 
   return (
     <div className="flex min-h-dvh flex-col">
       <StaffNav isOwner={profile.role === "owner"} name={profile.display_name ?? user.email ?? ""} logo={logo} cafe={cafe} />
-      <div className="flex-1">{children}</div>
+      {/* Leaves room for the phone tab bar */}
+      <div className="flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0">{children}</div>
     </div>
   );
 }

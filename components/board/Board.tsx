@@ -1,4 +1,5 @@
 "use client";
+import { CalendarDays } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, cn, ErrorNote, Input, PayBadge, payText, STATUS_STYLE, StatusBadge } from "@/components/ui";
 import { useLiveBookings } from "@/components/staff/useBookings";
@@ -13,6 +14,8 @@ import { BookingDialog, type DialogTarget } from "./BookingDialog";
 import { BookingHoverCard, type HoverTarget } from "./BookingHoverCard";
 
 const COL = 56; // px per slot
+// Day arrows + Today: thumb-sized on phones, compact on wider screens
+const NAV_BTN = "min-w-10 sm:h-8 sm:min-w-0 sm:px-3 sm:text-xs"; // on top of the md button size
 const NAME_W = 144; // px for the station column
 
 export function Board({
@@ -132,33 +135,46 @@ export function Board({
 
   return (
     <main className="mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-5">
-      {/* Toolbar */}
+      {/* Toolbar. Phones: ‹ date › Today on one row (tap the date to pick one), then a
+          full-width New booking. Wider screens keep everything on a single line. */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1">
-          <Button variant="outline" size="sm" onClick={() => setDate(addDays(date, -1))} aria-label="Previous day">
-            ←
-          </Button>
-          <Button variant={isToday ? "primary" : "outline"} size="sm" onClick={() => setDate(istDate())}>
-            Today
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setDate(addDays(date, 1))} aria-label="Next day">
-            →
-          </Button>
-        </div>
-        <h1 className="font-display text-xl font-semibold">{fmtDay(date)}</h1>
+        <Button variant="outline" className={cn(NAV_BTN, "order-1")} onClick={() => setDate(addDays(date, -1))} aria-label="Previous day">
+          ←
+        </Button>
+        <label className="relative order-2 min-w-0 flex-1 sm:order-4 sm:flex-none">
+          <h1 className="flex items-center justify-center gap-1.5 truncate font-display text-lg font-semibold sm:justify-start sm:text-xl">
+            {fmtDay(date)}
+            <CalendarDays className="size-4 shrink-0 text-muted sm:hidden" aria-hidden />
+          </h1>
+          {/* Invisible native date picker over the title, phones only */}
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => e.target.value && setDate(e.target.value)}
+            aria-label="Pick a date"
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0 sm:hidden"
+          />
+        </label>
+        <Button variant="outline" className={cn(NAV_BTN, "order-3")} onClick={() => setDate(addDays(date, 1))} aria-label="Next day">
+          →
+        </Button>
+        <Button variant={isToday ? "primary" : "outline"} className={cn(NAV_BTN, "order-4 sm:order-2")} onClick={() => setDate(istDate())}>
+          Today
+        </Button>
         <Input
           type="date"
           value={date}
           onChange={(e) => e.target.value && setDate(e.target.value)}
-          className="h-8 w-auto text-xs"
+          className="order-5 hidden sm:block sm:h-8 sm:w-40 sm:text-xs"
         />
-        <Button className="ml-auto" onClick={() => setTarget({ mode: "new" })}>
+        <Button className="order-6 w-full sm:ml-auto sm:w-auto" onClick={() => setTarget({ mode: "new" })}>
           + New booking
         </Button>
       </div>
 
       {/* Stats */}
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      {/* Phones: one swipeable row instead of a screenful of cards */}
+      <div className="no-scrollbar -mx-3 mb-4 flex snap-x gap-2 overflow-x-auto px-3 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-6">
         <Stat label="Bookings" value={loading ? "…" : stats.total} />
         <Stat label="Waiting to confirm" value={loading ? "…" : stats.pending} tone={stats.pending ? "amber" : undefined} />
         <Stat label="Playing now" value={loading ? "…" : isToday ? stats.live : "–"} tone={stats.live && isToday ? "green" : undefined} />
@@ -267,7 +283,6 @@ export function Board({
                           )}
                         >
                           <span className="truncate text-xs font-bold">
-                            {b.source === "online" && "🌐 "}
                             {b.customer_name}
                             {b.party_size > 1 && <span className="font-normal opacity-70"> ×{b.party_size}</span>}
                           </span>
@@ -388,11 +403,11 @@ const PAY_BAR: Record<string, string> = {
 
 function Stat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: "amber" | "green" | "rose" }) {
   return (
-    <div className="rounded-2xl border border-line bg-panel px-4 py-3">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">{label}</div>
+    <div className="min-w-[8.5rem] shrink-0 snap-start rounded-2xl border border-line bg-panel px-3 py-2.5 sm:min-w-0 sm:px-4 sm:py-3">
+      <div className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted sm:text-[11px]">{label}</div>
       <div
         className={cn(
-          "mt-0.5 font-display text-2xl font-semibold",
+          "mt-0.5 font-display text-xl font-semibold sm:text-2xl",
           tone === "amber" && "text-amber-300",
           tone === "green" && "text-emerald-300",
           tone === "rose" && "text-rose-300",
@@ -406,7 +421,7 @@ function Stat({ label, value, tone }: { label: string; value: React.ReactNode; t
 
 function Legend({ payments }: { payments: boolean }) {
   const items: [string, string][] = [
-    ["pending", "Waiting to confirm (🌐 = online)"],
+    ["pending", "Waiting to confirm"],
     ["confirmed", "Confirmed"],
     ["arrived", "Playing"],
     ["completed", "Done"],
