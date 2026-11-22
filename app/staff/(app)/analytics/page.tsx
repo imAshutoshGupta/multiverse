@@ -25,7 +25,7 @@ const TABLE_LIMIT = 300;
 
 export default function BookingsPage({ searchParams }: PageProps<"/staff/analytics">) {
   return (
-    <Suspense fallback={<PageSkeleton />}>
+    <Suspense fallback={<PageSkeleton label="Crunching stats" />}>
       <BookingsContent searchParams={searchParams} />
     </Suspense>
   );
@@ -172,7 +172,7 @@ async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/analytic
 
       <h2 className="mt-6 font-display text-lg font-semibold">All bookings</h2>
 
-      {/* Phones: one card per booking; tap opens that day on the board */}
+      {/* Phones: one card per booking; tap opens that day on the dashboard */}
       <div className="mt-2 overflow-hidden rounded-2xl border border-line bg-panel sm:hidden">
         {rows.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-muted">No bookings match these filters.</p>

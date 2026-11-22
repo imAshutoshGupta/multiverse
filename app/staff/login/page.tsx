@@ -51,10 +51,10 @@ export default async function LoginPage() {
               <br />
               from one screen.
             </h2>
-            <p className="mt-4 text-muted">Today&apos;s board, new requests and payments, all in one place.</p>
+            <p className="mt-4 text-muted">Today&apos;s dashboard, new requests and payments, all in one place.</p>
           </div>
           <ul className="relative flex gap-2 text-xs text-muted">
-            {["Board", "Requests", "Analytics"].map((t) => (
+            {["Dashboard", "Requests", "Analytics"].map((t) => (
               <li key={t} className="rounded-full border border-line/80 bg-void/40 px-3 py-1">
                 {t}
               </li>

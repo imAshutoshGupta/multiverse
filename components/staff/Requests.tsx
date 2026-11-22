@@ -3,6 +3,7 @@ import { Check, Clock, MessageCircle, Pencil, Phone, Undo2, X } from "lucide-rea
 import { useEffect, useMemo, useState } from "react";
 import { BookingDialog } from "@/components/board/BookingDialog";
 import { Button, cn, ErrorNote } from "@/components/ui";
+import { LoadingStrip } from "@/components/loading/GameLoader";
 import { bookingErrorMessage, useLiveBookings } from "@/components/staff/useBookings";
 import { formatINR } from "@/lib/availability";
 import { FAR_FUTURE, type InitialBookings } from "@/lib/bookingsWindow";
@@ -146,7 +147,7 @@ export function Requests({
       </div>
 
       {bookings === null ? (
-        <div className="mt-6 h-32 animate-pulse rounded-2xl bg-panel" />
+        error ? null : <LoadingStrip label="Loading requests" className="mt-6" />
       ) : bookings.length === 0 ? (
         <div className="mt-6 rounded-2xl border border-dashed border-line p-10 text-center text-muted">
           🎉 All caught up. New requests will show up here straight away.
@@ -335,7 +336,7 @@ function RequestCard({
                 <X className="size-4" aria-hidden /> Decline
               </Button>
               <a href={boardHref} className="ml-auto text-sm text-muted underline-offset-2 hover:text-ink hover:underline">
-                View on board
+                View on dashboard
               </a>
             </div>
           )}

@@ -57,7 +57,7 @@ export function ButtonLink({
 }
 
 const field =
-  "w-full rounded-xl border border-line bg-panel-2 px-3 text-sm text-ink placeholder:text-muted/60 outline-none transition focus:border-portal focus:ring-2 focus:ring-portal/25 disabled:opacity-50";
+  "w-full rounded-xl border border-line bg-panel-2 px-3 text-base text-ink sm:text-sm placeholder:text-muted/60 outline-none transition focus:border-portal focus:ring-2 focus:ring-portal/25 disabled:opacity-50";
 
 export function Input({ className, ...props }: ComponentProps<"input">) {
   return <input className={cn(field, "h-10", className)} {...props} />;
@@ -70,9 +70,9 @@ export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
 /** App-styled dropdown (same API as <select>). */
 export { Select } from "./Select";
 
-export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+export function Field({ label, children, hint, className }: { label: string; children: ReactNode; hint?: string; className?: string }) {
   return (
-    <label className="flex flex-col gap-1.5">
+    <label className={cn("flex min-w-0 flex-col gap-1.5", className)}>
       <span className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</span>
       {children}
       {hint && <span className="text-xs text-muted/80">{hint}</span>}
@@ -158,15 +158,21 @@ export function Modal({
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
-      className="m-auto w-[min(100vw-1.5rem,34rem)] max-h-[92dvh] rounded-2xl border border-line bg-panel p-0 text-ink shadow-2xl"
+      // Phones: a bottom sheet (full width, slides up, inner scroll); wider screens: a centred card
+      className="sheet m-auto max-h-[92dvh] w-[min(100vw-1.5rem,34rem)] flex-col overflow-hidden rounded-2xl border border-line bg-panel p-0 text-ink shadow-2xl open:flex max-sm:mb-0 max-sm:max-h-[94dvh] max-sm:w-full max-sm:max-w-full max-sm:rounded-b-none max-sm:border-x-0 max-sm:border-b-0"
     >
-      <div className="flex items-center justify-between border-b border-line px-5 py-4">
-        <h2 className="font-display text-lg font-semibold">{title}</h2>
-        <button onClick={onClose} className="rounded-lg p-1 text-muted hover:text-ink cursor-pointer" aria-label="Close">
+      <div className="relative flex shrink-0 items-center justify-between gap-3 border-b border-line px-5 py-3 sm:py-4">
+        <span aria-hidden className="absolute left-1/2 top-1.5 h-1 w-10 -translate-x-1/2 rounded-full bg-tint/15 sm:hidden" />
+        <h2 className="min-w-0 truncate pt-1 font-display text-lg font-semibold sm:pt-0">{title}</h2>
+        <button
+          onClick={onClose}
+          className="-mr-2 grid size-10 shrink-0 cursor-pointer place-items-center rounded-lg text-muted hover:bg-tint/5 hover:text-ink sm:size-8"
+          aria-label="Close"
+        >
           ✕
         </button>
       </div>
-      <div className="px-5 py-4">{open && children}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{open && children}</div>
     </dialog>
   );
 }

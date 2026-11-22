@@ -1,6 +1,6 @@
 "use client";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button, cn, ErrorNote, PayBadge, payText, STATUS_STYLE, StatusBadge } from "@/components/ui";
 import { useLiveBookings } from "@/components/staff/useBookings";
 import type { InitialBookings } from "@/lib/bookingsWindow";
@@ -10,13 +10,27 @@ import { displayPhone } from "@/lib/phone";
 import { addDays, businessWindow, daySlots, fmtDay, fmtDuration, fmtTime, istDate, minutesBetween } from "@/lib/time";
 import type { Booking, Closure, Game, Settings, Station, StationType } from "@/lib/types";
 import { useClock } from "@/lib/useClock";
+import { LoadingStrip, SegmentBar } from "@/components/loading/GameLoader";
 import { BookingDialog, type DialogTarget } from "./BookingDialog";
 import { BookingHoverCard, type HoverTarget } from "./BookingHoverCard";
 
 const COL = 56; // px per slot
 // Day arrows + Today: thumb-sized on phones, compact on wider screens
 const NAV_BTN = "min-w-10 sm:h-8 sm:min-w-0 sm:px-3 sm:text-xs"; // on top of the md button size
-const NAME_W = 144; // px for the station column
+// px for the sticky station column: slimmer on phones so most of the screen is slots
+const NAME_W = 144;
+const NAME_W_PHONE = 88;
+
+const PHONE_QUERY = "(max-width: 639.98px)";
+const subscribePhone = (cb: () => void) => {
+  const mq = window.matchMedia(PHONE_QUERY);
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+};
+/** True on phone-width screens (false while server rendering). */
+function usePhone() {
+  return useSyncExternalStore(subscribePhone, () => window.matchMedia(PHONE_QUERY).matches, () => false);
+}
 
 export function Board({
   initialDate,
@@ -37,6 +51,7 @@ export function Board({
   isOwner: boolean;
   initialBookings?: InitialBookings | null;
 }) {
+  const nameW = usePhone() ? NAME_W_PHONE : NAME_W;
   const [date, setDateState] = useState(initialDate);
   const [target, setTarget] = useState<DialogTarget | null>(null);
   const [hover, setHover] = useState<HoverTarget | null>(null);
@@ -172,7 +187,7 @@ export function Board({
     const el = scrollRef.current;
     if (!el) return;
     const twoHours = Math.max(1, Math.round(120 / settings.slot_minutes)) * COL;
-    el.scrollBy({ left: dir * Math.min(twoHours, el.clientWidth - NAME_W - COL), behavior: "smooth" });
+    el.scrollBy({ left: dir * Math.min(twoHours, el.clientWidth - nameW - COL), behavior: "smooth" });
   };
 
   return (
@@ -251,11 +266,11 @@ export function Board({
       )}
 
       {/* Grid */}
-      <div className="relative overflow-hidden rounded-2xl border border-line bg-panel">
+      <div className="relative -mx-3 overflow-hidden border-y border-line bg-panel sm:mx-0 sm:rounded-2xl sm:border-x">
         {/* Edge fades + scroll arrows (in place of the native scrollbar) */}
         <div
           aria-hidden
-          style={{ left: NAME_W }}
+          style={{ left: nameW }}
           className={cn(
             "pointer-events-none absolute inset-y-0 z-20 w-10 bg-gradient-to-r from-panel to-transparent transition-opacity",
             edges.left ? "opacity-100" : "opacity-0",
@@ -273,7 +288,7 @@ export function Board({
           onClick={() => nudge(-1)}
           aria-label="Earlier times"
           tabIndex={edges.left ? 0 : -1}
-          style={{ left: NAME_W + 8 }}
+          style={{ left: nameW + 8 }}
           className={cn(
             "absolute top-1/2 z-30 grid size-9 -translate-y-1/2 place-items-center sm:size-8 rounded-full border border-line bg-panel/90 text-muted shadow-lg backdrop-blur transition hover:text-ink",
             edges.left ? "opacity-100" : "pointer-events-none opacity-0",
@@ -293,11 +308,23 @@ export function Board({
         >
           <ChevronRight className="size-4" />
         </button>
+        {/* Another day is loading: a HUD chip over the dimmed grid */}
+        {loading && !error && (
+          <div role="status" className="pointer-events-none absolute inset-0 z-30 grid place-items-center">
+            <div className="gl-enter flex flex-col items-center gap-2.5 rounded-2xl border border-portal/30 bg-void/85 px-5 py-3.5 shadow-[0_10px_40px_-10px_var(--color-portal)] backdrop-blur">
+              <span className="font-display text-[11px] font-bold uppercase tracking-[0.24em] text-ink">
+                Loading {fmtDay(date)}
+                <span className="gl-dots" aria-hidden />
+              </span>
+              <SegmentBar className="w-36" />
+            </div>
+          </div>
+        )}
         <div ref={scrollRef} className={cn("no-scrollbar overflow-x-auto transition-opacity", loading && "pointer-events-none opacity-50")} aria-busy={loading}>
-          <div style={{ width: NAME_W + gridWidth }} className="relative">
+          <div style={{ width: nameW + gridWidth }} className="relative">
             {/* time header */}
             <div className="sticky top-0 z-20 flex border-b border-line bg-panel">
-              <div style={{ width: NAME_W }} className="sticky left-0 z-10 shrink-0 bg-panel px-3 py-2 text-xs text-muted">
+              <div style={{ width: nameW }} className="sticky left-0 z-10 shrink-0 bg-panel px-2 py-2 text-xs text-muted sm:px-3">
                 Station
               </div>
               {slots.map((s, i) => {
@@ -319,11 +346,14 @@ export function Board({
               return (
                 <div key={st.id} className="flex border-b border-line/60 last:border-b-0">
                   <div
-                    style={{ width: NAME_W }}
-                    className="sticky left-0 z-10 flex shrink-0 flex-col justify-center border-r border-line bg-panel px-3 py-2"
+                    style={{ width: nameW }}
+                    className="sticky left-0 z-10 flex min-w-0 shrink-0 flex-col justify-center border-r border-line bg-panel px-2 py-2 sm:px-3"
+                    title={st.name}
                   >
-                    <span className="truncate text-sm font-semibold">{st.name}</span>
-                    <span className="text-[11px] text-muted">
+                    <span className="truncate text-xs font-semibold sm:text-sm">{st.name}</span>
+                    {/* Phones: just the world; the rate is in the booking form */}
+                    <span className="truncate text-[10px] text-muted sm:hidden">{st.type}</span>
+                    <span className="hidden truncate text-[11px] text-muted sm:block">
                       {st.type} · {formatINR(stationRate(st, types))}/hr{stationPricing(st, types) === "per_player" ? " pp" : ""}
                     </span>
                   </div>
@@ -398,7 +428,7 @@ export function Board({
             {nowOffset !== null && (
               <div
                 className="pointer-events-none absolute bottom-0 top-0 z-[6] w-px bg-rose-400 shadow-[0_0_8px_rgb(251_113_133)]"
-                style={{ left: NAME_W + nowOffset }}
+                style={{ left: nameW + nowOffset }}
               >
                 <span className="absolute -left-1 top-8 size-2 rounded-full bg-rose-400" />
               </div>
@@ -419,10 +449,10 @@ export function Board({
           {!loading && stats.pending > 0 && <span className="text-xs font-semibold text-amber-300">{stats.pending} need confirming</span>}
         </div>
         {bookings === null ? (
-          <div className="h-20 animate-pulse rounded-2xl bg-panel" />
+          error ? null : <LoadingStrip label="Loading bookings" />
         ) : visible.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-line p-6 text-center text-sm text-muted">
-            No bookings for {fmtDay(date)} yet. Tap any empty slot on the board to add one.
+            No bookings for {fmtDay(date)} yet. Tap any empty slot on the dashboard to add one.
           </p>
         ) : (
           <div className="space-y-4">

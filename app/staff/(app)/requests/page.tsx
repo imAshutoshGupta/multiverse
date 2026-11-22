@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Requests" };
 
 export default function RequestsPage() {
   return (
-    <Suspense fallback={<PageSkeleton />}>
+    <Suspense fallback={<PageSkeleton label="Loading requests" />}>
       <RequestsContent />
     </Suspense>
   );

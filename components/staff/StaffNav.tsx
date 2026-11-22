@@ -1,30 +1,42 @@
 "use client";
-import { CalendarRange, Inbox, ChartColumn, LogOut, Settings, type LucideIcon } from "lucide-react";
+import { ChartColumn, Inbox, LayoutDashboard, LoaderCircle, LogOut, Settings, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/book/Landing";
+import { WarpOverlay } from "@/components/loading/WarpOverlay";
 import { Button, cn } from "@/components/ui";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 /** `compact`: just an icon on phones, where the top bar is tight. */
 export function SignOutButton({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
+  const [leaving, setLeaving] = useState(false);
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      aria-label="Sign out"
-      className={cn(compact && "h-10 w-10 px-0 sm:h-8 sm:w-auto sm:px-3")}
-      onClick={async () => {
-        await supabaseBrowser().auth.signOut();
-        router.replace("/staff/login");
-        router.refresh();
-      }}
-    >
-      {compact && <LogOut className="size-5 sm:hidden" aria-hidden />}
-      <span className={cn(compact && "hidden sm:inline")}>Sign out</span>
-    </Button>
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label="Sign out"
+        disabled={leaving}
+        className={cn(compact && "h-10 w-10 px-0 sm:h-8 sm:w-auto sm:px-3")}
+        onClick={async () => {
+          setLeaving(true);
+          const { error } = await supabaseBrowser().auth.signOut();
+          if (error) {
+            setLeaving(false);
+            return;
+          }
+          router.replace("/staff/login");
+          router.refresh();
+        }}
+      >
+        {compact && (leaving ? <LoaderCircle className="size-5 animate-spin sm:hidden" aria-hidden /> : <LogOut className="size-5 sm:hidden" aria-hidden />)}
+        <span className={cn(compact && "hidden sm:inline")}>{leaving ? "Signing out…" : "Sign out"}</span>
+      </Button>
+      {/* Stays up until the login page replaces this one */}
+      <WarpOverlay show={leaving} label="Signing out" tips={[]} />
+    </>
   );
 }
 
@@ -35,7 +47,7 @@ export function StaffNav({ isOwner, name, logo, cafe }: { isOwner: boolean; name
   const pending = usePendingCount();
   // One list drives both the top nav (wider screens) and the bottom tab bar (phones)
   const links: NavLink[] = [
-    { href: "/staff", label: "Board", icon: CalendarRange },
+    { href: "/staff", label: "Dashboard", icon: LayoutDashboard },
     { href: "/staff/requests", label: "Requests", icon: Inbox, badge: pending },
     { href: "/staff/analytics", label: "Analytics", icon: ChartColumn },
     ...(isOwner ? [{ href: "/staff/settings", label: "Settings", icon: Settings }] : []),

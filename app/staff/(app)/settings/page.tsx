@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "Settings" };
 
 export default function SettingsPage({ searchParams }: PageProps<"/staff/settings">) {
   return (
-    <Suspense fallback={<PageSkeleton />}>
+    <Suspense fallback={<PageSkeleton label="Loading settings" />}>
       <SettingsContent searchParams={searchParams} />
     </Suspense>
   );

@@ -70,6 +70,19 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   filter: invert(0.8);
 }
 
+/* Modal as a bottom sheet on phones: slides up from the edge */
+@media (max-width: 639.98px) {
+  dialog.sheet[open] {
+    animation: sheet-up 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(40%);
+    opacity: 0;
+  }
+}
+
 dialog::backdrop {
   background: rgb(4 3 10 / 0.72);
   backdrop-filter: blur(3px);
@@ -110,6 +123,213 @@ dialog::backdrop {
   40%,
   80% {
     transform: translateX(6px);
+  }
+}
+
+/* ---------- Loading screens (components/loading) ---------- */
+
+/* Fades in after a beat, so quick loads don't flash a loader */
+.gl-enter {
+  animation: gl-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both;
+}
+@keyframes gl-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+.gl-ring {
+  background: conic-gradient(from 0deg, transparent 0 40%, var(--color-portal) 75%, var(--color-rift) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--color-portal) 70%, transparent));
+  animation: hero-spin 1.1s linear infinite;
+}
+.gl-ring-dash {
+  animation: hero-spin 6s linear infinite reverse;
+}
+.gl-orbit {
+  animation: hero-spin 2.4s cubic-bezier(0.6, 0.1, 0.4, 0.9) infinite;
+}
+.gl-core {
+  animation: gl-pulse 1.6s ease-in-out infinite;
+}
+@keyframes gl-pulse {
+  50% {
+    transform: scale(1.35);
+    opacity: 0.55;
+  }
+}
+/* Block bar: each segment lights up in turn, then the row resets */
+.gl-seg {
+  animation: gl-seg 1.8s steps(1, end) infinite;
+}
+@keyframes gl-seg {
+  0% {
+    background: color-mix(in oklab, var(--color-tint) 10%, transparent);
+    box-shadow: none;
+  }
+  8%,
+  70% {
+    background: var(--color-portal);
+    box-shadow: 0 0 8px color-mix(in oklab, var(--color-portal) 80%, transparent);
+  }
+  78%,
+  100% {
+    background: color-mix(in oklab, var(--color-tint) 10%, transparent);
+    box-shadow: none;
+  }
+}
+/* "LOADING..." with dots typing out */
+.gl-dots::after {
+  content: "";
+  display: inline-block;
+  width: 1.5em;
+  text-align: left;
+  animation: gl-dots 1.2s steps(4, end) infinite;
+}
+@keyframes gl-dots {
+  0% {
+    content: "";
+  }
+  25% {
+    content: ".";
+  }
+  50% {
+    content: "..";
+  }
+  75% {
+    content: "...";
+  }
+}
+/* Tips take turns, three seconds each */
+.gl-tip {
+  opacity: 0;
+  animation: gl-tip 9s ease infinite both;
+}
+@keyframes gl-tip {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  4%,
+  30% {
+    opacity: 1;
+    transform: none;
+  }
+  34%,
+  100% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Warp: full-screen jump between login and the console */
+.warp-overlay {
+  animation: warp-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes warp-in {
+  from {
+    opacity: 0;
+  }
+}
+.warp-burst {
+  background: radial-gradient(closest-side, transparent 55%, color-mix(in oklab, var(--color-portal) 35%, transparent) 70%, transparent 74%);
+  animation: warp-burst 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes warp-burst {
+  from {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+/* Star streaks rushing out from the centre */
+.warp-streaks {
+  background: repeating-conic-gradient(
+    from 0deg at 50% 50%,
+    transparent 0deg 7deg,
+    color-mix(in oklab, var(--color-ink) 10%, transparent) 7.4deg,
+    transparent 8deg 15deg
+  );
+  -webkit-mask: radial-gradient(circle at 50% 50%, transparent 12%, #000 40%, transparent 75%);
+  mask: radial-gradient(circle at 50% 50%, transparent 12%, #000 40%, transparent 75%);
+  animation: warp-streaks 1.6s cubic-bezier(0.3, 0, 0.2, 1) infinite;
+}
+@keyframes warp-streaks {
+  from {
+    transform: scale(0.6) rotate(0deg);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.6) rotate(6deg);
+    opacity: 0;
+  }
+}
+
+/* XP bar across the top while a page loads */
+.nav-xp {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-portal), var(--color-rift));
+  box-shadow:
+    0 0 10px var(--color-portal),
+    0 0 4px var(--color-rift);
+  transform-origin: left;
+}
+.nav-xp-run {
+  animation:
+    nav-xp-fade 0.2s ease 0.1s both,
+    nav-xp-run 10s cubic-bezier(0.05, 0.7, 0.1, 1) 0.1s both;
+}
+@keyframes nav-xp-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes nav-xp-run {
+  from {
+    transform: scaleX(0.04);
+  }
+  to {
+    transform: scaleX(0.92);
+  }
+}
+.nav-xp-done {
+  animation: nav-xp-done 0.45s ease both;
+}
+@keyframes nav-xp-done {
+  from {
+    transform: scaleX(0.7);
+  }
+  50% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+/* Reduced motion: keep one still tip and a lit bar instead of a frozen blank */
+@media (prefers-reduced-motion: reduce) {
+  .gl-tip:first-child {
+    opacity: 1 !important;
+    animation: none !important;
+  }
+  .gl-seg {
+    animation: none !important;
+    background: color-mix(in oklab, var(--color-portal) 60%, transparent);
+  }
+  .warp-streaks,
+  .warp-burst {
+    display: none;
   }
 }
 

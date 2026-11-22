@@ -1,4 +1,5 @@
 "use client";
+import { MessageCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button, ButtonLink, cn, ErrorNote, Field, Input, Modal, PayBadge, Select, StatusBadge, Textarea } from "@/components/ui";
 import { bookingErrorMessage } from "@/components/staff/useBookings";
@@ -10,6 +11,12 @@ import { bookingTotal, DEFAULT_METHOD, METHOD_LABEL, PICK_METHODS, paySummary, p
 import { businessWindow, daySlots, fmtDay, fmtDuration, fmtTime, istDate, minutesBetween } from "@/lib/time";
 import type { Booking, BookingPayment, BookingStatus, Game, PaymentKind, PaymentMethod, Settings, Station, StationType } from "@/lib/types";
 import { BLOCKING_STATUSES } from "@/lib/types";
+
+// Phones get the full-size (md) button, thumb-friendly; wider screens shrink it to the compact row
+const ACTION_BTN = "sm:h-8 sm:px-3 sm:text-xs";
+const CONTACT_BTN = cn(ACTION_BTN, "whitespace-nowrap");
+/** In a 2-column grid, a lone last button spans the full row instead of leaving a gap. */
+const ORPHAN_SPAN = "[&>*:last-child:nth-child(odd)]:col-span-2";
 
 export type DialogTarget =
   | { mode: "new"; stationId?: string; start?: string }
@@ -196,7 +203,7 @@ function BookingForm({
       if (pay.error) {
         setSaving(false);
         setSavedWithError(true);
-        return setError(`Booking added, but the payment wasn't recorded: ${bookingErrorMessage(pay.error)} Open the booking from the board to add it.`);
+        return setError(`Booking added, but the payment wasn't recorded: ${bookingErrorMessage(pay.error)} Open the booking from the dashboard to add it.`);
       }
     }
     setSaving(false);
@@ -273,7 +280,7 @@ function BookingForm({
             ))}
           </Select>
         </Field>
-        <Field label="Customer name">
+        <Field label="Customer name" className="col-span-2 sm:col-span-1">
           <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoFocus={!existing} />
         </Field>
         <Field label="Phone">
@@ -290,6 +297,7 @@ function BookingForm({
           </Select>
         </Field>
         <Field
+          className="col-span-2 sm:col-span-1"
           label="Amount (₹)"
           hint={priceValue === null ? `Standard rate · ${fmtTime(new Date(startMs))}–${fmtTime(new Date(endMs))}` : `Standard ${formatINR(standardPrice)} · type to change (discount, package)`}
         >
@@ -369,77 +377,83 @@ function BookingForm({
       <ErrorNote>{error}</ErrorNote>
 
       {existing?.phone && preview && station && (
-        <div className="flex flex-wrap gap-2">
+        <div className={cn("grid grid-cols-2 gap-2 sm:flex sm:flex-wrap", ORPHAN_SPAN)}>
           <ButtonLink
             variant="success"
-            className="h-8 px-3 text-xs"
+            className={CONTACT_BTN}
             href={waLink(existing.phone, message("confirm", settings, preview, station, games.find((g) => g.id === gameId)?.name))}
             target="_blank"
             rel="noreferrer"
           >
-            WhatsApp confirmation
+            <MessageCircle className="size-4 shrink-0 sm:hidden" aria-hidden />
+            <span className="sm:hidden">Confirmation</span>
+            <span className="hidden sm:inline">WhatsApp confirmation</span>
           </ButtonLink>
           <ButtonLink
-            className="h-8 px-3 text-xs"
+            className={CONTACT_BTN}
             href={waLink(existing.phone, message("reminder", settings, preview, station, games.find((g) => g.id === gameId)?.name))}
             target="_blank"
             rel="noreferrer"
           >
-            Send reminder
+            <MessageCircle className="size-4 shrink-0 sm:hidden" aria-hidden />
+            <span className="sm:hidden">Reminder</span>
+            <span className="hidden sm:inline">Send reminder</span>
           </ButtonLink>
-          <ButtonLink className="h-8 px-3 text-xs" href={telLink(existing.phone)}>
+          <ButtonLink className={CONTACT_BTN} href={telLink(existing.phone)}>
             Call {displayPhone(existing.phone)}
           </ButtonLink>
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
+      <div className="sticky bottom-0 z-10 -mx-5 -mb-4 flex flex-col gap-2 border-t border-line bg-panel px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:pb-4 sm:pt-4">
         {existing ? (
           <>
-            {existing.status === "pending" && (
-              <Button variant="success" size="sm" disabled={saving || conflict} onClick={() => save("confirmed")}>
-                Confirm
-              </Button>
-            )}
-            {["pending", "confirmed"].includes(existing.status) && (
-              <Button variant="outline" size="sm" disabled={saving} onClick={() => setStatus("arrived")}>
-                Arrived
-              </Button>
-            )}
-            {existing.status === "arrived" && (
-              <Button variant="outline" size="sm" disabled={saving} onClick={() => setStatus("completed")}>
-                Finish
-              </Button>
-            )}
-            {["pending", "confirmed"].includes(existing.status) && (
-              <Button variant="ghost" size="sm" disabled={saving} onClick={() => setStatus("no_show")}>
-                No-show
-              </Button>
-            )}
-            {existing.status !== "cancelled" ? (
-              <Button variant="danger" size="sm" disabled={saving} onClick={() => setStatus("cancelled")}>
-                Cancel booking
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" disabled={saving || conflict} onClick={() => save("confirmed")}>
-                Restore
-              </Button>
-            )}
-            {isOwner && (
-              <Button variant="ghost" size="sm" disabled={saving} onClick={remove} className="text-rose-300">
-                Delete
-              </Button>
-            )}
-            <Button className="ml-auto" disabled={saving || conflict} onClick={() => save()}>
+            <div className={cn("grid grid-cols-2 gap-2 empty:hidden sm:flex sm:flex-wrap", ORPHAN_SPAN)}>
+              {existing.status === "pending" && (
+                <Button variant="success" className={ACTION_BTN} disabled={saving || conflict} onClick={() => save("confirmed")}>
+                  Confirm
+                </Button>
+              )}
+              {["pending", "confirmed"].includes(existing.status) && (
+                <Button variant="outline" className={ACTION_BTN} disabled={saving} onClick={() => setStatus("arrived")}>
+                  Arrived
+                </Button>
+              )}
+              {existing.status === "arrived" && (
+                <Button variant="outline" className={ACTION_BTN} disabled={saving} onClick={() => setStatus("completed")}>
+                  Finish
+                </Button>
+              )}
+              {["pending", "confirmed"].includes(existing.status) && (
+                <Button variant="ghost" className={ACTION_BTN} disabled={saving} onClick={() => setStatus("no_show")}>
+                  No-show
+                </Button>
+              )}
+              {existing.status !== "cancelled" ? (
+                <Button variant="danger" className={ACTION_BTN} disabled={saving} onClick={() => setStatus("cancelled")}>
+                  Cancel booking
+                </Button>
+              ) : (
+                <Button variant="outline" className={ACTION_BTN} disabled={saving || conflict} onClick={() => save("confirmed")}>
+                  Restore
+                </Button>
+              )}
+              {isOwner && (
+                <Button variant="ghost" disabled={saving} onClick={remove} className={cn(ACTION_BTN, "text-rose-300")}>
+                  Delete
+                </Button>
+              )}
+            </div>
+            <Button size="lg" className="w-full sm:ml-auto sm:h-10 sm:w-auto sm:px-4 sm:text-sm" disabled={saving || conflict} onClick={() => save()}>
               {saving ? "Saving…" : "Save"}
             </Button>
           </>
         ) : savedWithError ? (
-          <Button className="ml-auto" onClick={onDone}>
+          <Button size="lg" className="w-full sm:ml-auto sm:h-10 sm:w-auto sm:px-4 sm:text-sm" onClick={onDone}>
             Close
           </Button>
         ) : (
-          <Button className="ml-auto" disabled={saving || conflict || !stationId} onClick={() => save()}>
+          <Button size="lg" className="w-full sm:ml-auto sm:h-10 sm:w-auto sm:px-4 sm:text-sm" disabled={saving || conflict || !stationId} onClick={() => save()}>
             {saving
               ? "Saving…"
               : payMode === "full"
@@ -644,12 +658,12 @@ function PaymentsPanel({
             aria-label="Note"
             className="mt-2 h-9"
           />
-          <div className="mt-3 flex items-center gap-2">
-            <Button size="sm" variant={mode === "refund" ? "outline" : "success"} disabled={busy || invalid} onClick={save}>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button className={ACTION_BTN} variant={mode === "refund" ? "outline" : "success"} disabled={busy || invalid} onClick={save}>
               {busy ? "Saving…" : mode === "refund" ? `Save refund of ${formatINR(value || 0)}` : `Save ${formatINR(value || 0)} payment`}
             </Button>
             {mode === "refund" && (
-              <Button size="sm" variant="ghost" onClick={() => switchMode("payment")}>
+              <Button className={ACTION_BTN} variant="ghost" onClick={() => switchMode("payment")}>
                 Cancel
               </Button>
             )}

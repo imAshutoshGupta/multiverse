@@ -10,17 +10,17 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { businessWindow, parseDateParam } from "@/lib/time";
 import type { Closure, Settings } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Board" };
+export const metadata: Metadata = { title: "Dashboard" };
 
-export default function BoardPage({ searchParams }: PageProps<"/staff">) {
+export default function DashboardPage({ searchParams }: PageProps<"/staff">) {
   return (
-    <Suspense fallback={<PageSkeleton />}>
-      <BoardContent searchParams={searchParams} />
+    <Suspense fallback={<PageSkeleton label="Loading dashboard" />}>
+      <DashboardContent searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function BoardContent({ searchParams }: Pick<PageProps<"/staff">, "searchParams">) {
+async function DashboardContent({ searchParams }: Pick<PageProps<"/staff">, "searchParams">) {
   const { date } = await searchParams;
   // "Today" comes from the clock, so it's resolved at request time (never in a prefetch).
   const day = parseDateParam(date, await requestToday());
@@ -45,7 +45,7 @@ async function BoardContent({ searchParams }: Pick<PageProps<"/staff">, "searchP
   );
 }
 
-/** The day's bookings for the first paint; the board keeps them live from there. */
+/** The day's bookings for the first paint; the dashboard keeps them live from there. */
 async function loadBookings(day: string, settings: Settings, closures: Closure[]): Promise<InitialBookings | null> {
   const { opensAt, closesAt } = businessWindow(day, settings, closures);
   const from = opensAt.toISOString();

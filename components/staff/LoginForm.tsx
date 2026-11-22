@@ -2,6 +2,7 @@
 import { ArrowRight, Check, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { WarpOverlay } from "@/components/loading/WarpOverlay";
 import { cn } from "@/components/ui";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
@@ -57,6 +58,12 @@ export function LoginForm() {
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-5">
+      {/* Signed in: warp to the dashboard. Stays up until this page is replaced. */}
+      <WarpOverlay
+        show={phase === "done"}
+        kicker="Player verified"
+        label="Loading dashboard"
+      />
       <label className="flex flex-col gap-2">
         <span className="text-[13px] font-medium text-muted">Email</span>
         <span className="relative">
@@ -136,7 +143,7 @@ export function LoginForm() {
         ) : phase === "done" ? (
           <>
             <Check className="size-5" aria-hidden />
-            Opening the board
+            Opening the dashboard
           </>
         ) : (
           <>

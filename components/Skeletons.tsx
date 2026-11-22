@@ -1,4 +1,5 @@
 // Static loading shells, prerendered and shown while request-time data streams in.
+import { GameLoader, LOADER_TIPS } from "@/components/loading/GameLoader";
 
 function Block({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-2xl bg-panel ${className}`} />;
@@ -21,6 +22,7 @@ export function BookSkeleton() {
   );
 }
 
+/** Shown while the session is checked: the same screen the sign-in warp ends on. */
 export function StaffShellSkeleton() {
   return (
     <div className="flex flex-1 flex-col" aria-busy>
@@ -29,22 +31,18 @@ export function StaffShellSkeleton() {
           <span className="h-7 w-32 animate-pulse rounded-lg bg-panel" />
         </div>
       </header>
-      <PageSkeleton />
+      <PageSkeleton label="Loading dashboard" />
     </div>
   );
 }
 
-export function PageSkeleton() {
+export function PageSkeleton({ label = "Loading" }: { label?: string }) {
   return (
-    <main className="mx-auto w-full max-w-[1600px] space-y-4 px-3 py-4 sm:px-5" aria-busy>
-      <Block className="h-10 w-72" />
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Block className="h-20" />
-        <Block className="h-20" />
-        <Block className="h-20" />
-        <Block className="h-20" />
-      </div>
-      <Block className="h-80" />
+    <main
+      className="mx-auto grid min-h-[calc(100dvh-8rem)] w-full max-w-[1600px] place-items-center px-3 py-10 sm:min-h-[calc(100dvh-3.5rem)] sm:px-5"
+      aria-busy
+    >
+      <GameLoader label={label} tips={LOADER_TIPS[label]} />
     </main>
   );
 }

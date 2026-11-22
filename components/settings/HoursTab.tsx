@@ -87,7 +87,7 @@ function Closures({ closures }: { closures: Closure[] }) {
   const upcoming = closures.filter((c) => c.date >= today);
 
   return (
-    <Section title="Holidays and closed days" description="Online booking is turned off for these dates. Staff can still add bookings on the board.">
+    <Section title="Holidays and closed days" description="Online booking is turned off for these dates. Staff can still add bookings on the dashboard.">
       <form
         className="flex flex-wrap items-end gap-2"
         onSubmit={async (e) => {
