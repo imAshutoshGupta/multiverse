@@ -7,9 +7,10 @@ import { formatINR, stationPricing, stationRate } from "@/lib/availability";
 import { bookingPay, paymentsReady, type PaySummary } from "@/lib/payments";
 import { displayPhone } from "@/lib/phone";
 import { addDays, businessWindow, daySlots, fmtDay, fmtTime, istDate } from "@/lib/time";
-import type { Closure, Game, Settings, Station, StationType } from "@/lib/types";
+import type { Booking, Closure, Game, Settings, Station, StationType } from "@/lib/types";
 import { useClock } from "@/lib/useClock";
 import { BookingDialog, type DialogTarget } from "./BookingDialog";
+import { BookingHoverCard, type HoverTarget } from "./BookingHoverCard";
 
 const COL = 56; // px per slot
 const NAME_W = 144; // px for the station column
@@ -35,6 +36,28 @@ export function Board({
 }) {
   const [date, setDateState] = useState(initialDate);
   const [target, setTarget] = useState<DialogTarget | null>(null);
+  const [hover, setHover] = useState<HoverTarget | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const showHover = (booking: Booking, el: HTMLElement, delay = 120) => {
+    clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setHover({ booking, rect: el.getBoundingClientRect() }), delay);
+  };
+  const hideHover = () => {
+    clearTimeout(hoverTimer.current);
+    setHover(null);
+  };
+  // The card is pinned to the block's position, so drop it as soon as anything scrolls.
+  useEffect(() => {
+    if (!hover) return;
+    const off = () => setHover(null);
+    window.addEventListener("scroll", off, true);
+    window.addEventListener("resize", off);
+    return () => {
+      window.removeEventListener("scroll", off, true);
+      window.removeEventListener("resize", off);
+    };
+  }, [hover]);
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
   const clock = useClock();
   const now = useMemo(() => new Date(clock ?? 0), [clock]);
 
@@ -87,6 +110,8 @@ export function Board({
     };
   }, [visible, bookings, payById, now]);
   const loading = bookings === null;
+  // Latest copy of the hovered booking (live updates, e.g. a payment, show straight away)
+  const hovered = hover ? visible.find((b) => b.id === hover.booking.id) : undefined;
 
   const slotMs = settings.slot_minutes * 60_000;
   const isToday = date === istDate(now);
@@ -225,14 +250,21 @@ export function Board({
                       return (
                         <button
                           key={b.id}
-                          onClick={() => setTarget({ mode: "edit", booking: b })}
+                          onClick={() => {
+                            hideHover();
+                            setTarget({ mode: "edit", booking: b });
+                          }}
+                          onMouseEnter={(e) => showHover(b, e.currentTarget)}
+                          onMouseLeave={hideHover}
+                          onFocus={(e) => e.currentTarget.matches(":focus-visible") && showHover(b, e.currentTarget, 0)}
+                          onBlur={hideHover}
+                          aria-label={`${b.customer_name}, ${fmtTime(b.starts_at)} to ${fmtTime(b.ends_at)}${payLine ? `, ${payLine}` : ""}`}
                           style={{ left: Math.max(0, left) + 2, width: Math.max(width - 4, 20) }}
                           className={cn(
                             "absolute inset-y-1.5 z-[5] flex cursor-pointer flex-col justify-center overflow-hidden rounded-lg border px-2 text-left transition hover:brightness-125",
                             STATUS_STYLE[b.status],
                             b.status === "pending" && "border-dashed",
                           )}
-                          title={`${b.customer_name} · ${fmtTime(b.starts_at)}–${fmtTime(b.ends_at)}${payLine ? ` · ${payLine}` : ""}`}
                         >
                           <span className="truncate text-xs font-bold">
                             {b.source === "online" && "🌐 "}
@@ -245,7 +277,7 @@ export function Board({
                           </span>
                           {pay && pay.state !== "closed" && (
                             <span
-                              aria-label={payLine}
+                              aria-hidden
                               className={cn("absolute inset-x-0 bottom-0 h-1", PAY_BAR[pay.state])}
                             />
                           )}
@@ -319,6 +351,15 @@ export function Board({
           </ul>
         )}
       </section>
+
+      {hovered && hover && (
+        <BookingHoverCard
+          target={{ booking: hovered, rect: hover.rect }}
+          stationName={stationById.get(hovered.station_id)?.name}
+          gameName={hovered.game_id ? gameById.get(hovered.game_id)?.name : null}
+          pay={payReady ? payById.get(hovered.id) : undefined}
+        />
+      )}
 
       <BookingDialog
         target={target}

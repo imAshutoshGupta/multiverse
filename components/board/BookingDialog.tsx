@@ -103,6 +103,8 @@ function BookingForm({
   const [notes, setNotes] = useState(existing?.notes ?? "");
   // Agreed amount; blank = the station's standard rate.
   const [priceInput, setPriceInput] = useState(existing?.price != null ? String(Number(existing.price)) : "");
+  // New bookings: has the customer paid anything yet?
+  const [payMode, setPayMode] = useState<"none" | "advance" | "full">("none");
   const [advance, setAdvance] = useState("");
   const [advanceMethod, setAdvanceMethod] = useState<PaymentMethod>("upi");
   const [savedWithError, setSavedWithError] = useState(false);
@@ -140,15 +142,16 @@ function BookingForm({
   const priceValue = priceInput.trim() === "" ? null : Number(priceInput);
   const priceInvalid = priceValue !== null && (!Number.isFinite(priceValue) || priceValue < 0 || priceValue > 1_000_000);
   const total = priceValue ?? standardPrice;
-  const advanceValue = advance.trim() === "" ? 0 : Number(advance);
-  const advanceInvalid = !Number.isFinite(advanceValue) || advanceValue < 0 || advanceValue > 1_000_000;
+  const advanceValue = payMode === "full" ? total : payMode === "advance" ? (advance.trim() === "" ? 0 : Number(advance)) : 0;
+  const advanceInvalid =
+    payMode === "advance" && (!Number.isFinite(advanceValue) || advanceValue <= 0 || advanceValue > 1_000_000);
 
   async function save(status?: BookingStatus) {
     setError(null);
     if (!name.trim()) return setError("Enter the customer's name.");
     if (phoneInvalid) return setError("Phone number doesn't look right.");
     if (priceInvalid) return setError("Amount doesn't look right.");
-    if (!existing && advanceInvalid) return setError("Advance amount doesn't look right.");
+    if (!existing && advanceInvalid) return setError("Enter how much advance the customer paid.");
     setSaving(true);
     const sb = supabaseBrowser();
     const row = {
@@ -187,13 +190,13 @@ function BookingForm({
         amount: advanceValue,
         kind: "payment",
         method: advanceMethod,
-        note: "Advance",
+        note: payMode === "full" ? "Paid in full at booking" : "Advance",
         created_by: userId,
       });
       if (pay.error) {
         setSaving(false);
         setSavedWithError(true);
-        return setError(`Booking added, but the advance wasn't recorded: ${bookingErrorMessage(pay.error)} Open the booking from the board to add it.`);
+        return setError(`Booking added, but the payment wasn't recorded: ${bookingErrorMessage(pay.error)} Open the booking from the board to add it.`);
       }
     }
     setSaving(false);
@@ -301,32 +304,51 @@ function BookingForm({
             aria-invalid={priceInvalid}
           />
         </Field>
-        {!existing && paymentsOn && (
-          <>
-            <Field label="Advance paid (₹)" hint="Optional. Recorded as a payment.">
-              <Input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="any"
-                value={advance}
-                onChange={(e) => setAdvance(e.target.value)}
-                placeholder="0"
-                aria-invalid={advanceInvalid}
-              />
-            </Field>
-            <Field label="Paid by">
-              <Select value={advanceMethod} onChange={(e) => setAdvanceMethod(e.target.value as PaymentMethod)} disabled={!advanceValue}>
-                {Object.entries(METHOD_LABEL).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </>
-        )}
       </div>
+      {!existing && paymentsOn && (
+        <div className="rounded-2xl border border-line bg-panel-2/60 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted">Has the customer paid?</div>
+          <Segmented
+            className="mt-2"
+            value={payMode}
+            onChange={setPayMode}
+            options={[
+              ["none", "Not yet"],
+              ["advance", "Paid advance"],
+              ["full", `Paid in full · ${formatINR(total)}`],
+            ]}
+          />
+          {payMode !== "none" && (
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              {payMode === "advance" && (
+                <Field label="Advance amount (₹)">
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="any"
+                    value={advance}
+                    onChange={(e) => setAdvance(e.target.value)}
+                    placeholder="e.g. 200"
+                    aria-invalid={advanceInvalid}
+                    className="w-36"
+                    autoFocus
+                  />
+                </Field>
+              )}
+              <Field label="Paid by">
+                <MethodPicker value={advanceMethod} onChange={setAdvanceMethod} />
+              </Field>
+            </div>
+          )}
+          {payMode === "advance" && advanceValue > 0 && !advanceInvalid && (
+            <p className="mt-2 text-xs text-muted">
+              {advanceValue >= total ? "That covers the full amount." : `${formatINR(total - advanceValue)} will be due when they play.`}
+            </p>
+          )}
+        </div>
+      )}
+
       <Field label="Notes">
         <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} rows={2} />
       </Field>
@@ -418,7 +440,13 @@ function BookingForm({
           </Button>
         ) : (
           <Button className="ml-auto" disabled={saving || conflict || !stationId} onClick={() => save()}>
-            {saving ? "Saving…" : advanceValue > 0 ? `Add booking + ${formatINR(advanceValue)} advance` : "Add booking"}
+            {saving
+              ? "Saving…"
+              : payMode === "full"
+                ? `Add booking · paid ${formatINR(total)}`
+                : payMode === "advance" && advanceValue > 0
+                  ? `Add booking · ${formatINR(advanceValue)} advance`
+                  : "Add booking"}
           </Button>
         )}
       </div>
@@ -426,7 +454,47 @@ function BookingForm({
   );
 }
 
-/** Payment history for one booking, plus quick "record payment / refund" entry. */
+/** Small pill-style single choice. */
+function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+  className,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: [T, string][];
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex flex-wrap gap-1.5", className)} role="radiogroup">
+      {options.map(([v, label]) => (
+        <button
+          key={v}
+          type="button"
+          role="radio"
+          aria-checked={value === v}
+          onClick={() => onChange(v)}
+          className={cn(
+            "h-9 cursor-pointer rounded-xl border px-3 text-xs font-semibold transition",
+            value === v ? "border-portal bg-portal text-on-portal" : "border-line text-muted hover:border-portal/60 hover:text-ink",
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MethodPicker({ value, onChange }: { value: PaymentMethod; onChange: (m: PaymentMethod) => void }) {
+  return <Segmented value={value} onChange={onChange} options={Object.entries(METHOD_LABEL) as [PaymentMethod, string][]} />;
+}
+
+/**
+ * Payment section of an existing booking. One clear action at a time:
+ * collect the balance (pre-filled), or, behind a link, give a refund.
+ */
 function PaymentsPanel({
   booking,
   total,
@@ -440,14 +508,14 @@ function PaymentsPanel({
 }) {
   const [payments, setPayments] = useState<BookingPayment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [amount, setAmount] = useState("");
+  const [mode, setMode] = useState<PaymentKind>("payment");
+  const [amount, setAmount] = useState<string | null>(null); // null = use the suggested amount
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-
   const [version, setVersion] = useState(0);
-  const load = () => setVersion((v) => v + 1);
+  const reload = () => setVersion((v) => v + 1);
 
   useEffect(() => {
     let alive = true;
@@ -468,29 +536,44 @@ function PaymentsPanel({
 
   const paid = (payments ?? []).reduce((sum, p) => sum + (p.kind === "refund" ? -1 : 1) * Number(p.amount), 0);
   const summary = paySummary(booking.status, total, payments ? paid : booking.paid_amount);
-  const amountValue = amount.trim() === "" ? summary.due : Number(amount);
-  const amountInvalid = !Number.isFinite(amountValue) || amountValue <= 0 || amountValue > 1_000_000;
+  const extra = Math.max(0, summary.paid - summary.total);
+  const suggested = mode === "refund" ? extra || summary.paid : summary.due;
+  const value = amount === null ? suggested : amount.trim() === "" ? 0 : Number(amount);
+  const invalid = !Number.isFinite(value) || value <= 0 || value > 1_000_000 || (mode === "refund" && value > summary.paid);
+  const showForm = mode === "refund" || summary.due > 0;
 
-  async function record(kind: PaymentKind, value = amountValue) {
+  function switchMode(m: PaymentKind) {
+    setMode(m);
+    setAmount(null);
     setError(null);
-    if (!Number.isFinite(value) || value <= 0) return setError("Enter an amount.");
-    if (kind === "refund" && value > summary.paid) return setError(`Refund can't be more than what was paid (${formatINR(summary.paid)}).`);
+  }
+
+  async function save() {
+    setError(null);
+    if (invalid) {
+      return setError(
+        mode === "refund" && value > summary.paid
+          ? `You can refund at most ${formatINR(summary.paid)} (what they paid).`
+          : "Enter an amount.",
+      );
+    }
     setBusy(true);
     const sb = supabaseBrowser();
     const { data: auth } = await sb.auth.getUser();
     const { error } = await sb.from("booking_payments").insert({
       booking_id: booking.id,
       amount: value,
-      kind,
+      kind: mode,
       method,
       note: note.trim() || null,
       created_by: auth.user?.id ?? null,
     });
     setBusy(false);
     if (error) return setError(bookingErrorMessage(error));
-    setAmount("");
+    setAmount(null);
     setNote("");
-    load();
+    setMode("payment");
+    reload();
   }
 
   async function remove(id: string) {
@@ -499,121 +582,147 @@ function PaymentsPanel({
     setBusy(false);
     setConfirmDelete(null);
     if (error) return setError(bookingErrorMessage(error));
-    load();
+    reload();
   }
+
+  // What will happen after this entry is saved, in plain words.
+  const outcome =
+    invalid || mode === "refund"
+      ? null
+      : value >= summary.due
+        ? value > summary.due
+          ? `That's ${formatINR(value - summary.due)} more than the balance.`
+          : "Clears the balance. Booking will show as Paid."
+        : `Part payment. ${formatINR(summary.due - value)} will still be due.`;
 
   return (
     <section className="rounded-2xl border border-line bg-panel-2/60 p-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">Payment</h3>
         <PayBadge pay={summary} />
-        <span className="ml-auto text-xs text-muted">
-          Total <b className="text-ink">{formatINR(summary.total)}</b> · Paid{" "}
-          <b className="text-emerald-300">{formatINR(summary.paid)}</b> · Due{" "}
-          <b className={cn(summary.due > 0 ? "text-rose-300" : "text-ink")}>{formatINR(summary.due)}</b>
-        </span>
       </div>
-      {totalChanged && <p className="mt-1 text-[11px] text-amber-300">Total uses your unsaved changes. Press Save to keep them.</p>}
+
+      <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+        <Money label="Total" value={summary.total} />
+        <Money label="Paid" value={summary.paid} tone="green" />
+        <Money label="Due" value={summary.due} tone={summary.due > 0 ? "rose" : undefined} />
+      </div>
+      {totalChanged && <p className="mt-1 text-[11px] text-amber-300">Total includes your unsaved changes. Press Save to keep them.</p>}
+
+      {!showForm && summary.state !== "closed" && (
+        <p className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-200">
+          ✓ Fully paid. Nothing to collect.
+        </p>
+      )}
+
+      {showForm && (
+        <div className={cn("mt-3 rounded-xl border p-3", mode === "refund" ? "border-sky-400/40" : "border-line")}>
+          <div className="text-sm font-semibold">{mode === "refund" ? "Give money back" : "Collect payment"}</div>
+          <div className="mt-2 flex flex-wrap items-end gap-3">
+            <Field label="Amount (₹)">
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                value={amount ?? (suggested ? String(suggested) : "")}
+                onChange={(e) => setAmount(e.target.value)}
+                aria-invalid={invalid}
+                className="w-32"
+              />
+            </Field>
+            <Field label={mode === "refund" ? "Given back by" : "Paid by"}>
+              <MethodPicker value={method} onChange={setMethod} />
+            </Field>
+          </div>
+          {outcome && <p className="mt-2 text-xs text-muted">{outcome}</p>}
+          <Input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={200}
+            placeholder="Note, optional (e.g. UPI ref)"
+            aria-label="Note"
+            className="mt-2 h-9"
+          />
+          <div className="mt-3 flex items-center gap-2">
+            <Button size="sm" variant={mode === "refund" ? "outline" : "success"} disabled={busy || invalid} onClick={save}>
+              {busy ? "Saving…" : mode === "refund" ? `Save refund of ${formatINR(value || 0)}` : `Save ${formatINR(value || 0)} payment`}
+            </Button>
+            {mode === "refund" && (
+              <Button size="sm" variant="ghost" onClick={() => switchMode("payment")}>
+                Cancel
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+      <ErrorNote>{error}</ErrorNote>
 
       {payments === null ? (
         !error && <div className="mt-3 h-8 animate-pulse rounded-lg bg-panel" />
-      ) : payments.length === 0 ? (
-        <p className="mt-2 text-xs text-muted">No payments recorded yet.</p>
       ) : (
-        <ul className="mt-2 divide-y divide-line/60 text-xs">
-          {payments.map((p) => {
-            const day = istDate(new Date(p.created_at));
-            return (
-              <li key={p.id} className="flex items-center gap-2 py-1.5">
-                <span className={cn("w-20 shrink-0 font-mono font-semibold", p.kind === "refund" ? "text-sky-300" : "text-emerald-300")}>
-                  {p.kind === "refund" ? "−" : "+"}
-                  {formatINR(Number(p.amount))}
-                </span>
-                <span className="shrink-0 rounded-md border border-line px-1.5 py-0.5">{METHOD_LABEL[p.method]}</span>
-                <span className="min-w-0 flex-1 truncate text-muted">
-                  {p.kind === "refund" ? "Refund" : ""}
-                  {p.kind === "refund" && p.note ? " · " : ""}
-                  {p.note}
-                </span>
-                <span className="shrink-0 text-muted">
-                  {day === istDate() ? "" : `${fmtDay(day)}, `}
-                  {fmtTime(p.created_at)}
-                </span>
-                {isOwner &&
-                  (confirmDelete === p.id ? (
-                    <Button variant="danger" size="sm" className="h-6 px-2" disabled={busy} onClick={() => remove(p.id)}>
-                      Delete?
-                    </Button>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmDelete(p.id)}
-                      className="cursor-pointer rounded p-0.5 text-muted hover:text-rose-300"
-                      aria-label="Delete payment"
-                      title="Delete this entry (owner only)"
-                    >
-                      ✕
-                    </button>
-                  ))}
-              </li>
-            );
-          })}
-        </ul>
+        payments.length > 0 && (
+          <div className="mt-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">History</div>
+            <ul className="mt-1 divide-y divide-line/60 text-xs">
+              {payments.map((p) => {
+                const day = istDate(new Date(p.created_at));
+                return (
+                  <li key={p.id} className="flex items-center gap-2 py-1.5">
+                    <span className={cn("w-20 shrink-0 font-mono font-semibold", p.kind === "refund" ? "text-sky-300" : "text-emerald-300")}>
+                      {p.kind === "refund" ? "−" : "+"}
+                      {formatINR(Number(p.amount))}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {p.kind === "refund" ? "Refund" : "Paid"} by {METHOD_LABEL[p.method]}
+                      {p.note && <span className="text-muted"> · {p.note}</span>}
+                    </span>
+                    <span className="shrink-0 text-muted">
+                      {day === istDate() ? "today" : fmtDay(day)}, {fmtTime(p.created_at)}
+                    </span>
+                    {isOwner &&
+                      (confirmDelete === p.id ? (
+                        <Button variant="danger" size="sm" className="h-6 px-2" disabled={busy} onClick={() => remove(p.id)}>
+                          Delete entry?
+                        </Button>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDelete(p.id)}
+                          className="cursor-pointer rounded p-0.5 text-muted hover:text-rose-300"
+                          aria-label="Delete this entry"
+                          title="Delete this entry (if it was added by mistake)"
+                        >
+                          ✕
+                        </button>
+                      ))}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )
       )}
 
-      <div className="mt-3 grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[7rem_auto_1fr]">
-        <Input
-          type="number"
-          inputMode="decimal"
-          min={0}
-          step="any"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder={summary.due > 0 ? String(summary.due) : "Amount"}
-          aria-label="Amount"
-          className="h-9"
-        />
-        <div className="flex overflow-hidden rounded-xl border border-line" role="radiogroup" aria-label="Paid by">
-          {(Object.keys(METHOD_LABEL) as PaymentMethod[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              role="radio"
-              aria-checked={method === m}
-              onClick={() => setMethod(m)}
-              className={cn(
-                "cursor-pointer px-2.5 text-xs font-semibold transition",
-                method === m ? "bg-portal text-on-portal" : "text-muted hover:bg-tint/5 hover:text-ink",
-              )}
-            >
-              {METHOD_LABEL[m]}
-            </button>
-          ))}
-        </div>
-        <Input
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          maxLength={200}
-          placeholder="Note (UPI ref, etc.)"
-          aria-label="Note"
-          className="col-span-2 h-9 sm:col-span-1"
-        />
-      </div>
-      <ErrorNote>{error}</ErrorNote>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <Button size="sm" variant="success" disabled={busy || amountInvalid} onClick={() => record("payment")}>
-          {amountInvalid ? "Record payment" : `Record ${formatINR(amountValue)} payment`}
-        </Button>
-        {summary.due > 0 && amount.trim() !== "" && amountValue !== summary.due && (
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => record("payment", summary.due)}>
-            Mark fully paid ({formatINR(summary.due)})
-          </Button>
-        )}
-        {summary.paid > 0 && (
-          <Button size="sm" variant="ghost" disabled={busy || amountInvalid} onClick={() => record("refund")}>
-            {amountInvalid ? "Refund" : `Refund ${formatINR(amountValue)}`}
-          </Button>
-        )}
-      </div>
+      {mode === "payment" && summary.paid > 0 && (
+        <button
+          type="button"
+          onClick={() => switchMode("refund")}
+          className="mt-2 cursor-pointer text-xs text-muted underline-offset-2 hover:text-ink hover:underline"
+        >
+          Need to give money back? Record a refund
+        </button>
+      )}
     </section>
+  );
+}
+
+function Money({ label, value, tone }: { label: string; value: number; tone?: "green" | "rose" }) {
+  return (
+    <div className="rounded-xl border border-line bg-panel px-2 py-1.5">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">{label}</div>
+      <div className={cn("font-mono text-base font-semibold", tone === "green" && "text-emerald-300", tone === "rose" && "text-rose-300")}>
+        {formatINR(value)}
+      </div>
+    </div>
   );
 }
