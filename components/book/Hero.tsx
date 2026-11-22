@@ -44,8 +44,8 @@ export function Hero({
     return () => removeEventListener("pointermove", move);
   }, [reduce, mx, my]);
 
-  const fade = useTransform(p, [0, 0.36], [1, 0]);
-  const rise = useTransform(p, [0, 0.5], [0, -70]);
+  const fade = useTransform(p, [0, 0.27], [1, 0]);
+  const rise = useTransform(p, [0, 0.38], [0, -70]);
 
   const scene = imageUrl ? (
     <PhotoScene src={imageUrl} p={p} sx={sx} sy={sy} reduce={reduce} />
@@ -57,7 +57,7 @@ export function Hero({
 
   return (
     // The outer box is taller than the screen so the scene stays pinned while it plays
-    <div ref={ref} className={cn("relative -mt-20", !reduce && "h-[155svh]")}>
+    <div ref={ref} className={cn("relative -mt-20", !reduce && "h-[120svh]")}>
       <section className="sticky top-0 isolate flex min-h-svh flex-col justify-end overflow-hidden px-5 pb-12 pt-32 sm:px-10 sm:pb-16">
         <Starfield p={p} sx={sx} sy={sy} reduce={reduce} />
         {scene}
@@ -92,7 +92,7 @@ export function Hero({
 /** One headline line: words flip up in 3D, then lines drift apart as you scroll. */
 function HeroLine({ text, index, count, p, reduce }: { text: string; index: number; count: number; p: MV; reduce: boolean }) {
   // Upper lines rise faster, so the headline pulls apart as it leaves
-  const y = useTransform(p, [0, 0.5], [0, -(40 + (count - 1 - index) * 70)]);
+  const y = useTransform(p, [0, 0.38], [0, -(40 + (count - 1 - index) * 70)]);
   const words = text.split(/\s+/).filter(Boolean);
   return (
     <motion.span className="block pb-[0.06em] [perspective:900px]" style={reduce ? undefined : { y }}>
@@ -132,8 +132,8 @@ const SLOTS = [
 function PosterField({ posters, p, sx, sy, reduce }: { posters: Game[]; p: MV; sx: MV; sy: MV; reduce: boolean }) {
   const rotateY = useTransform(sx, (v) => -12 + v * 14);
   const rotateX = useTransform(sy, (v) => 7 - v * 9);
-  const z = useTransform(p, [0, 0.55], [0, 1350]);
-  const fade = useTransform(p, [0.2, 0.55], [1, 0]);
+  const z = useTransform(p, [0, 0.42], [0, 1350]);
+  const fade = useTransform(p, [0.15, 0.42], [1, 0]);
 
   return (
     <motion.div
@@ -145,6 +145,7 @@ function PosterField({ posters, p, sx, sy, reduce }: { posters: Game[]; p: MV; s
         className="absolute inset-0"
         style={{
           transformStyle: "preserve-3d",
+          willChange: "transform",
           rotateX: reduce ? 7 : rotateX,
           rotateY: reduce ? -12 : rotateY,
           z: reduce ? 0 : z,
@@ -198,7 +199,7 @@ function Poster({ game, slot, index }: { game: Game; slot: (typeof SLOTS)[number
 }
 
 const RING_MASK = "radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px))";
-const RING_GLOW_MASK = "radial-gradient(farthest-side, transparent calc(100% - 22px), #000 calc(100% - 10px), transparent)";
+const RING_GLOW_MASK = "radial-gradient(farthest-side, transparent calc(100% - 44px), #000 calc(100% - 9px), transparent)";
 const RING_FILL =
   "conic-gradient(from 0deg, transparent 0deg, var(--color-portal) 70deg, var(--color-rift) 150deg, transparent 210deg, var(--color-portal) 300deg, transparent 360deg)";
 
@@ -210,7 +211,7 @@ function OrbitRing() {
       style={{ transform: "translate(-50%, -50%) translateZ(-140px) rotateX(64deg)", transformStyle: "preserve-3d" }}
     >
       <motion.div
-        className="absolute inset-0 rounded-full opacity-90 blur-lg"
+        className="absolute inset-0 rounded-full opacity-60"
         style={{ background: RING_FILL, maskImage: RING_GLOW_MASK, WebkitMaskImage: RING_GLOW_MASK }}
         animate={{ rotate: 360 }}
         transition={{ duration: 26, repeat: Infinity, ease: "linear" }}
@@ -447,7 +448,7 @@ function Starfield({ p, sx, sy, reduce }: { p: MV; sx: MV; sy: MV; reduce: boole
 }
 
 function ScrollCue({ p }: { p: MV }) {
-  const opacity = useTransform(p, [0, 0.06], [1, 0]);
+  const opacity = useTransform(p, [0, 0.05], [1, 0]);
   return (
     <motion.div aria-hidden style={{ opacity }} className="absolute bottom-10 right-10 hidden h-16 w-px overflow-hidden bg-line md:block">
       <motion.span
