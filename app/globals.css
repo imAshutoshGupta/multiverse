@@ -1,26 +1,93 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * Theme tokens. Brand colours (portal, rift, void) and fonts are overridden per
+ * cafe by <ThemeStyle>; surfaces are derived from the background so any palette works.
+ */
+@theme {
+  --color-void: #0d0e2b;
+  --color-tint: #ffffff;
+  --color-ink: #f2f0ff;
+  --color-muted: #a3a1c8;
+  --color-portal: #7c5cff;
+  --color-on-portal: #ffffff;
+  --color-rift: #ffc23d;
+  --color-on-rift: #0b0b1a;
+  --color-panel: color-mix(in oklab, var(--color-void) 93%, var(--color-tint));
+  --color-panel-2: color-mix(in oklab, var(--color-void) 88%, var(--color-tint));
+  --color-line: color-mix(in oklab, var(--color-void) 80%, var(--color-tint));
+  --color-portal-strong: color-mix(in oklab, var(--color-portal) 85%, black);
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display-face), var(--font-body), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --animate-marquee: marquee 40s linear infinite;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  @keyframes marquee {
+    to {
+      transform: translateX(-50%);
+    }
   }
 }
 
+:root {
+  color-scheme: dark;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-void);
+  color: var(--color-ink);
+}
+
+::selection {
+  background: var(--color-portal);
+  color: var(--color-on-portal);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-rift);
+  outline-offset: 2px;
+}
+
+/* Staff pages: faint glow from the brand colour */
+.cosmos {
+  background:
+    radial-gradient(60rem 30rem at 85% -10%, color-mix(in oklab, var(--color-portal) 16%, transparent), transparent 60%),
+    var(--color-void);
+}
+
+.portal-text {
+  color: var(--color-ink);
+}
+
+/* Board stripes on alternating hours */
+.slot-cell:nth-child(4n + 1),
+.slot-cell:nth-child(4n + 2) {
+  background-color: color-mix(in oklab, var(--color-tint) 1.5%, transparent);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+
+dialog::backdrop {
+  background: rgb(4 3 10 / 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

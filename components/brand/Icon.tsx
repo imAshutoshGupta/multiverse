@@ -1,0 +1,60 @@
+import {
+  Armchair,
+  Construction,
+  Forklift,
+  Tractor,
+  Truck,
+  Car,
+  Cpu,
+  Dices,
+  Disc3,
+  Gamepad2,
+  Glasses,
+  Headset,
+  Joystick,
+  Keyboard,
+  Monitor,
+  Popcorn,
+  Projector,
+  Puzzle,
+  Sofa,
+  Swords,
+  Trophy,
+  Tv,
+  Users,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
+
+/** Icons the owner can pick for a world. Keys are stored in the database. */
+export const WORLD_ICONS: Record<string, { icon: LucideIcon; label: string }> = {
+  gamepad: { icon: Gamepad2, label: "Console" },
+  joystick: { icon: Joystick, label: "Arcade" },
+  monitor: { icon: Monitor, label: "PC" },
+  keyboard: { icon: Keyboard, label: "Keyboard" },
+  glasses: { icon: Glasses, label: "VR" },
+  headset: { icon: Headset, label: "Headset" },
+  projector: { icon: Projector, label: "Projector" },
+  tv: { icon: Tv, label: "TV" },
+  popcorn: { icon: Popcorn, label: "Movies" },
+  car: { icon: Car, label: "Racing sim" },
+  construction: { icon: Construction, label: "Construction / RC" },
+  truck: { icon: Truck, label: "Truck" },
+  tractor: { icon: Tractor, label: "Tractor" },
+  forklift: { icon: Forklift, label: "Machinery" },
+  dices: { icon: Dices, label: "Board games" },
+  puzzle: { icon: Puzzle, label: "Puzzles" },
+  swords: { icon: Swords, label: "Fighting" },
+  trophy: { icon: Trophy, label: "Tournament" },
+  cpu: { icon: Cpu, label: "Tech" },
+  disc: { icon: Disc3, label: "Music / DJ" },
+  sofa: { icon: Sofa, label: "Lounge" },
+  armchair: { icon: Armchair, label: "Seat" },
+  users: { icon: Users, label: "Group" },
+  zap: { icon: Zap, label: "Energy" },
+};
+
+export function WorldIcon({ name, className, strokeWidth = 1.75 }: { name: string; className?: string; strokeWidth?: number }) {
+  const Comp = (WORLD_ICONS[name] ?? WORLD_ICONS.gamepad).icon;
+  return <Comp className={className} strokeWidth={strokeWidth} aria-hidden />;
+}

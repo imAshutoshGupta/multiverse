@@ -1,0 +1,143 @@
+"use client";
+import { useEffect, useRef, type ComponentProps, type ReactNode } from "react";
+import type { BookingStatus } from "@/lib/types";
+import { STATUS_LABEL } from "@/lib/types";
+
+export function cn(...c: (string | false | null | undefined)[]) {
+  return c.filter(Boolean).join(" ");
+}
+
+type Variant = "primary" | "ghost" | "outline" | "danger" | "success";
+const variants: Record<Variant, string> = {
+  primary: "bg-portal text-on-portal hover:bg-portal-strong",
+  ghost: "text-muted hover:text-ink hover:bg-tint/5",
+  outline: "border border-line text-ink hover:border-portal/60 hover:bg-tint/5",
+  danger: "border border-rose-500/40 text-rose-300 hover:bg-rose-500/10",
+  success: "bg-[#25D366] text-[#06210f] hover:brightness-110",
+};
+
+export function Button({
+  variant = "primary",
+  size = "md",
+  className,
+  ...props
+}: ComponentProps<"button"> & { variant?: Variant; size?: "sm" | "md" | "lg" }) {
+  return (
+    <button
+      className={cn(
+        "inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none cursor-pointer",
+        size === "sm" && "h-8 px-3 text-xs",
+        size === "md" && "h-10 px-4 text-sm",
+        size === "lg" && "h-12 px-6 text-base",
+        variants[variant],
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export function ButtonLink({
+  variant = "outline",
+  className,
+  ...props
+}: ComponentProps<"a"> & { variant?: Variant }) {
+  return (
+    <a
+      className={cn(
+        "inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition",
+        variants[variant],
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+const field =
+  "w-full rounded-xl border border-line bg-panel-2 px-3 text-sm text-ink placeholder:text-muted/60 outline-none transition focus:border-portal focus:ring-2 focus:ring-portal/25 disabled:opacity-50";
+
+export function Input({ className, ...props }: ComponentProps<"input">) {
+  return <input className={cn(field, "h-10", className)} {...props} />;
+}
+
+export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
+  return <textarea className={cn(field, "py-2 min-h-16", className)} {...props} />;
+}
+
+export function Select({ className, ...props }: ComponentProps<"select">) {
+  return <select className={cn(field, "h-10 pr-8", className)} {...props} />;
+}
+
+export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</span>
+      {children}
+      {hint && <span className="text-xs text-muted/80">{hint}</span>}
+    </label>
+  );
+}
+
+export const STATUS_STYLE: Record<BookingStatus, string> = {
+  pending: "bg-amber-400/15 text-amber-200 border-amber-400/50",
+  confirmed: "bg-portal/20 text-ink border-portal/70",
+  arrived: "bg-emerald-400/15 text-emerald-100 border-emerald-400/60",
+  completed: "bg-slate-400/10 text-slate-300 border-slate-500/40",
+  cancelled: "bg-transparent text-muted line-through border-line",
+  no_show: "bg-rose-500/10 text-rose-200 border-rose-500/50",
+};
+
+export function StatusBadge({ status }: { status: BookingStatus }) {
+  return (
+    <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold", STATUS_STYLE[status])}>
+      {STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+/** Accessible modal built on <dialog>. */
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    if (open && !d.open) d.showModal();
+    if (!open && d.open) d.close();
+  }, [open]);
+  return (
+    <dialog
+      ref={ref}
+      onClose={onClose}
+      onClick={(e) => e.target === ref.current && onClose()}
+      className="m-auto w-[min(100vw-1.5rem,34rem)] max-h-[92dvh] rounded-2xl border border-line bg-panel p-0 text-ink shadow-2xl"
+    >
+      <div className="flex items-center justify-between border-b border-line px-5 py-4">
+        <h2 className="font-display text-lg font-semibold">{title}</h2>
+        <button onClick={onClose} className="rounded-lg p-1 text-muted hover:text-ink cursor-pointer" aria-label="Close">
+          ✕
+        </button>
+      </div>
+      <div className="px-5 py-4">{open && children}</div>
+    </dialog>
+  );
+}
+
+export function ErrorNote({ children }: { children: ReactNode }) {
+  if (!children) return null;
+  return (
+    <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+      {children}
+    </p>
+  );
+}
