@@ -82,6 +82,37 @@ dialog::backdrop {
   display: none;
 }
 
+/* ---------- Staff login ---------- */
+.login-orbit {
+  animation: hero-spin 60s linear infinite;
+}
+.login-orbit-rev {
+  animation-duration: 90s;
+  animation-direction: reverse;
+}
+.login-rise {
+  animation: login-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.985);
+  }
+}
+.login-shake {
+  animation: login-shake 0.4s ease both;
+}
+@keyframes login-shake {
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+
 /* ---------- Landing page effects ---------- */
 
 /* A band of light sweeps across on hover; -loop also repeats it every few seconds */
