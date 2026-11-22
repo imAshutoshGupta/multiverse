@@ -1,7 +1,7 @@
 "use client";
 import { CalendarDays } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, cn, ErrorNote, Input, PayBadge, payText, STATUS_STYLE, StatusBadge } from "@/components/ui";
+import { Button, cn, ErrorNote, PayBadge, payText, STATUS_STYLE, StatusBadge } from "@/components/ui";
 import { useLiveBookings } from "@/components/staff/useBookings";
 import type { InitialBookings } from "@/lib/bookingsWindow";
 import { formatINR, stationPricing, stationRate } from "@/lib/availability";
@@ -40,6 +40,16 @@ export function Board({
   const [date, setDateState] = useState(initialDate);
   const [target, setTarget] = useState<DialogTarget | null>(null);
   const [hover, setHover] = useState<HoverTarget | null>(null);
+  const dateInput = useRef<HTMLInputElement>(null);
+  const openDatePicker = () => {
+    const el = dateInput.current;
+    if (!el) return;
+    try {
+      el.showPicker();
+    } catch {
+      el.focus(); // older browsers: focus the field so arrow keys / typing work
+    }
+  };
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const showHover = (booking: Booking, el: HTMLElement, delay = 120) => {
     clearTimeout(hoverTimer.current);
@@ -94,24 +104,19 @@ export function Board({
   }, [bookings, stationById, types]);
 
   const stats = useMemo(() => {
+    // Money totals live on Analytics; the board only counts who still has to pay.
     const counted = visible.filter((b) => b.status !== "no_show");
-    const revenue = counted.reduce((sum, b) => sum + (payById.get(b.id)?.total ?? 0), 0);
-    // Money actually in hand for this day's bookings (cancelled ones too, until refunded)
-    const collected = (bookings ?? []).reduce((sum, b) => sum + (payById.get(b.id)?.paid ?? 0), 0);
-    const dues = visible.map((b) => payById.get(b.id)).filter((p): p is PaySummary => !!p && p.due > 0);
+    const dueCount = visible.filter((b) => (payById.get(b.id)?.due ?? 0) > 0).length;
     const t = now.getTime();
     return {
-      collected,
-      due: dues.reduce((sum, p) => sum + p.due, 0),
-      dueCount: dues.length,
+      dueCount,
       total: counted.length,
       pending: visible.filter((b) => b.status === "pending").length,
       live: visible.filter(
         (b) => ["confirmed", "arrived"].includes(b.status) && new Date(b.starts_at).getTime() <= t && new Date(b.ends_at).getTime() > t,
       ).length,
-      revenue,
     };
-  }, [visible, bookings, payById, now]);
+  }, [visible, payById, now]);
   const loading = bookings === null;
   // Latest copy of the hovered booking (live updates, e.g. a payment, show straight away)
   const hovered = hover ? visible.find((b) => b.id === hover.booking.id) : undefined;
@@ -175,12 +180,21 @@ export function Board({
         <Button variant={isToday ? "primary" : "outline"} className={cn(NAV_BTN, "order-4 sm:order-2")} onClick={() => setDate(istDate())}>
           Today
         </Button>
-        <Input
-          type="date"
-          value={date}
-          onChange={(e) => e.target.value && setDate(e.target.value)}
-          className="order-5 hidden sm:block sm:h-8 sm:w-40 sm:text-xs"
-        />
+        {/* Wider screens: a button that opens the browser's date picker (the title already shows the date) */}
+        <span className="relative order-5 hidden sm:inline-flex">
+          <Button variant="outline" className={NAV_BTN} onClick={openDatePicker} aria-label="Pick a date">
+            <CalendarDays className="size-4" aria-hidden /> Pick date
+          </Button>
+          <input
+            ref={dateInput}
+            type="date"
+            value={date}
+            onChange={(e) => e.target.value && setDate(e.target.value)}
+            tabIndex={-1}
+            aria-hidden
+            className="pointer-events-none absolute bottom-0 left-0 h-px w-px opacity-0"
+          />
+        </span>
         <Button className="order-6 w-full sm:ml-auto sm:w-auto" onClick={() => setTarget({ mode: "new" })}>
           + New booking
         </Button>
@@ -188,16 +202,14 @@ export function Board({
 
       {/* Stats */}
       {/* Phones: one swipeable row instead of a screenful of cards */}
-      <div className="no-scrollbar -mx-3 mb-4 flex snap-x gap-2 overflow-x-auto px-3 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-6">
+      <div className="no-scrollbar -mx-3 mb-4 flex snap-x gap-2 overflow-x-auto px-3 sm:mx-0 sm:grid sm:grid-cols-4 sm:overflow-visible sm:px-0">
         <Stat label="Bookings" value={loading ? "…" : stats.total} />
         <Stat label="Waiting to confirm" value={loading ? "…" : stats.pending} tone={stats.pending ? "amber" : undefined} />
         <Stat label="Playing now" value={loading ? "…" : isToday ? stats.live : "–"} tone={stats.live && isToday ? "green" : undefined} />
-        <Stat label="Expected revenue" value={loading ? "…" : formatINR(stats.revenue)} />
-        <Stat label="Collected" value={loading ? "…" : payReady === false ? "–" : formatINR(stats.collected)} tone={stats.collected ? "green" : undefined} />
         <Stat
-          label={stats.dueCount ? `Due · ${stats.dueCount} customer${stats.dueCount > 1 ? "s" : ""}` : "Due"}
-          value={loading ? "…" : payReady === false ? "–" : formatINR(stats.due)}
-          tone={stats.due ? "rose" : undefined}
+          label="Still to pay"
+          value={loading ? "…" : payReady === false ? "–" : stats.dueCount ? `${stats.dueCount} customer${stats.dueCount > 1 ? "s" : ""}` : "All paid"}
+          tone={stats.dueCount ? "rose" : payReady && visible.length ? "green" : undefined}
         />
       </div>
       {payReady === false && (
