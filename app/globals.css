@@ -82,6 +82,129 @@ dialog::backdrop {
   display: none;
 }
 
+/* ---------- Landing page effects ---------- */
+
+/* A band of light sweeps across on hover; -loop also repeats it every few seconds */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.btn-shine::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.45) 50%, transparent 65%);
+  transform: translateX(-120%);
+  transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.btn-shine:hover::after {
+  transform: translateX(120%);
+}
+.btn-shine-loop::after {
+  animation: shine-sweep 5s cubic-bezier(0.16, 1, 0.3, 1) 2.5s infinite;
+}
+@keyframes shine-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  22%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+/* Outline pill that fills from below on hover */
+.pill-fill {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition:
+    color 0.4s ease,
+    border-color 0.4s ease;
+}
+.pill-fill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--color-ink);
+  transform: translateY(101%);
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (hover: hover) {
+  .pill-fill:hover {
+    color: var(--color-void);
+    border-color: transparent;
+  }
+  .pill-fill:hover::before {
+    transform: translateY(0);
+  }
+}
+
+/* Holographic foil on featured game cards; follows the tilt */
+.foil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 20%,
+    rgb(255 0 128 / 0.55) 36%,
+    rgb(255 230 0 / 0.5) 44%,
+    rgb(0 255 200 / 0.5) 52%,
+    rgb(120 80 255 / 0.55) 60%,
+    transparent 76%
+  );
+  background-size: 250% 250%;
+  background-position: calc(50% + var(--px, 0) * 45%) calc(50% + var(--py, 0) * 45%);
+  mix-blend-mode: color-dodge;
+  transition:
+    opacity 0.5s ease,
+    background-position 0.3s ease-out;
+}
+
+/* Slow-moving light inside world cards, from the world's own colour */
+.aurora {
+  background:
+    radial-gradient(38% 38% at 30% 30%, color-mix(in oklab, var(--c) 30%, white), transparent 70%),
+    radial-gradient(34% 34% at 72% 66%, color-mix(in oklab, var(--c) 45%, black), transparent 70%);
+  opacity: 0.75;
+  animation: aurora-drift 16s ease-in-out infinite alternate;
+}
+@keyframes aurora-drift {
+  from {
+    transform: rotate(0deg) scale(1);
+  }
+  to {
+    transform: rotate(150deg) scale(1.18);
+  }
+}
+
+.text-outline {
+  color: transparent;
+  -webkit-text-stroke: 1.5px color-mix(in oklab, var(--color-ink) 70%, transparent);
+}
+
+/* Footer wordmark: solid at the top, fading into the floor */
+.wordmark-letter {
+  background-image: linear-gradient(
+    180deg,
+    var(--color-ink) 10%,
+    color-mix(in oklab, var(--color-ink) 10%, transparent) 105%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.wordmark-letter:hover {
+  background-image: linear-gradient(180deg, var(--color-rift), var(--color-portal));
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

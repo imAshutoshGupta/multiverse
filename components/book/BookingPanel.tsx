@@ -201,7 +201,7 @@ export function BookingPanel({
   const summary = chosen && endIso ? `${fmtDay(date)}, ${fmtTime(chosen)}–${fmtTime(endIso)}` : null;
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="panel-title" className="fixed inset-0 z-50 flex flex-col">
+    <div role="dialog" aria-modal="true" aria-labelledby="panel-title" data-lenis-prevent className="fixed inset-0 z-50 flex flex-col">
       {/* The tapped card (game poster or world colour) expands into the panel */}
       <motion.div
         layoutId={game ? `game-${game.id}` : `world-${world.name}`}
