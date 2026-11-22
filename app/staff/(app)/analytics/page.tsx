@@ -97,7 +97,7 @@ async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/analytic
       </div>
 
       {/* Quick ranges */}
-      <nav className="no-scrollbar -mx-4 mt-4 flex gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:px-0" aria-label="Date range">
+      <nav className="no-scrollbar -mx-4 mt-4 flex gap-1.5 overflow-x-auto px-4 max-sm:[mask-image:linear-gradient(to_right,#000_80%,transparent)] sm:mx-0 sm:px-0" aria-label="Date range">
         {ranges(today).map(([label, from, to]) => {
           const on = filters.from === from && filters.to === to;
           return (

@@ -19,6 +19,8 @@ const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const monthFmt = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", month: "long", year: "numeric" });
 const longFmt = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric" });
 const fieldFmt = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short", year: "numeric" });
+// Phones: half-width fields can't fit the year, so leave it out
+const shortFieldFmt = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" });
 
 const utc = (date: string) => new Date(`${date}T00:00:00Z`);
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
@@ -332,7 +334,14 @@ export function DateField({
             ].join(" ")}
           >
             <span className={`min-w-0 flex-1 truncate ${current ? "text-ink" : "text-muted/60"}`}>
-              {current ? fieldFmt.format(utc(current)) : placeholder}
+              {current ? (
+                <>
+                  <span className="sm:hidden">{shortFieldFmt.format(utc(current))}</span>
+                  <span className="hidden sm:inline">{fieldFmt.format(utc(current))}</span>
+                </>
+              ) : (
+                placeholder
+              )}
             </span>
             <CalendarDays className="size-4 shrink-0 text-muted" aria-hidden />
           </button>

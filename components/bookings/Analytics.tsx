@@ -62,7 +62,7 @@ export function Analytics({ a, duesHref, payReady }: { a: Stats; duesHref: strin
 
       <div className="grid gap-3 lg:grid-cols-3">
         <Panel title="Revenue by world">
-          <BarList items={a.byWorld.map((g) => ({ label: g.label, value: g.revenue, text: formatINR(g.revenue), sub: `${g.bookings} bookings` }))} />
+          <BarList items={a.byWorld.map((g) => ({ label: g.label, value: g.revenue, text: formatINR(g.revenue), sub: `${g.bookings} booking${g.bookings === 1 ? "" : "s"}` }))} />
         </Panel>
         <Panel title="Top stations">
           <BarList
@@ -200,7 +200,7 @@ function Kpi({
       >
         {value}
       </div>
-      {sub && <div className="mt-0.5 truncate text-xs text-muted">{sub}</div>}
+      {sub && <div className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted">{sub}</div>}
     </>
   );
   const cls = "block min-w-0 rounded-2xl border border-line bg-panel px-3 py-2.5 sm:px-4 sm:py-3";
@@ -260,7 +260,7 @@ function Columns({ items }: { items: { label: string; short: string; value: numb
   const max = Math.max(...items.map((i) => i.value), 0);
   if (!max) return <p className="text-sm text-muted">Nothing in this period.</p>;
   return (
-    <div>
+    <div className="pt-6">
       <div className="flex h-32 items-end gap-[2px] border-b border-line">
         {items.map((i) => (
           <div
