@@ -107,40 +107,61 @@ export function Analytics({ a, duesHref, payReady }: { a: Stats; duesHref: strin
         {a.customerList.length === 0 ? (
           <p className="text-sm text-muted">No customers in this period.</p>
         ) : (
-          <div className="-mx-1 overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="text-left text-[11px] uppercase tracking-wider text-muted">
-                <tr>
-                  <th className="px-1 py-1.5">Customer</th>
-                  <th className="px-1 py-1.5 text-right">Visits</th>
-                  <th className="px-1 py-1.5 text-right">Hours</th>
-                  <th className="px-1 py-1.5">Favourite</th>
-                  <th className="px-1 py-1.5 text-right">Value</th>
-                  <th className="px-1 py-1.5 text-right">Due</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line/60">
-                {a.customerList.slice(0, 8).map((c) => (
-                  <tr key={c.key}>
-                    <td className="px-1 py-2">
-                      <div className="font-semibold">{c.name}</div>
-                      <div className="text-xs text-muted">{c.phone ? displayPhone(c.phone) : "No phone"}</div>
-                    </td>
-                    <td className="px-1 py-2 text-right font-mono">
-                      {c.counted}
-                      {c.noShows > 0 && <span className="ml-1 text-xs text-rose-300" title="No-shows">({c.noShows} no-show)</span>}
-                    </td>
-                    <td className="px-1 py-2 text-right font-mono">{(c.minutes / 60).toFixed(1)}</td>
-                    <td className="max-w-48 truncate px-1 py-2 text-muted">{[c.favWorld, c.favGame].filter(Boolean).join(" · ") || "–"}</td>
-                    <td className="px-1 py-2 text-right font-mono">{formatINR(c.value)}</td>
-                    <td className={`px-1 py-2 text-right font-mono ${c.due ? "font-semibold text-rose-300" : "text-muted"}`}>
-                      {c.due ? formatINR(c.due) : "–"}
-                    </td>
+          <>
+            {/* Phones: compact list */}
+            <ul className="divide-y divide-line/60 sm:hidden">
+              {a.customerList.slice(0, 8).map((c) => (
+                <li key={c.key} className="flex items-center gap-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold">{c.name}</div>
+                    <div className="truncate text-xs text-muted">
+                      {c.counted} visit{c.counted === 1 ? "" : "s"} · {(c.minutes / 60).toFixed(1)} hrs
+                      {c.noShows > 0 && <span className="text-rose-300"> · {c.noShows} no-show</span>}
+                      {c.favGame && ` · ${c.favGame}`}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="font-mono text-sm font-semibold">{formatINR(c.value)}</div>
+                    {c.due > 0 && <div className="font-mono text-[11px] font-semibold text-rose-300">{formatINR(c.due)} due</div>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="-mx-1 hidden overflow-x-auto sm:block">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead className="text-left text-[11px] uppercase tracking-wider text-muted">
+                  <tr>
+                    <th className="px-1 py-1.5">Customer</th>
+                    <th className="px-1 py-1.5 text-right">Visits</th>
+                    <th className="px-1 py-1.5 text-right">Hours</th>
+                    <th className="px-1 py-1.5">Favourite</th>
+                    <th className="px-1 py-1.5 text-right">Value</th>
+                    <th className="px-1 py-1.5 text-right">Due</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-line/60">
+                  {a.customerList.slice(0, 8).map((c) => (
+                    <tr key={c.key}>
+                      <td className="px-1 py-2">
+                        <div className="font-semibold">{c.name}</div>
+                        <div className="text-xs text-muted">{c.phone ? displayPhone(c.phone) : "No phone"}</div>
+                      </td>
+                      <td className="px-1 py-2 text-right font-mono">
+                        {c.counted}
+                        {c.noShows > 0 && <span className="ml-1 text-xs text-rose-300" title="No-shows">({c.noShows} no-show)</span>}
+                      </td>
+                      <td className="px-1 py-2 text-right font-mono">{(c.minutes / 60).toFixed(1)}</td>
+                      <td className="max-w-48 truncate px-1 py-2 text-muted">{[c.favWorld, c.favGame].filter(Boolean).join(" · ") || "–"}</td>
+                      <td className="px-1 py-2 text-right font-mono">{formatINR(c.value)}</td>
+                      <td className={`px-1 py-2 text-right font-mono ${c.due ? "font-semibold text-rose-300" : "text-muted"}`}>
+                        {c.due ? formatINR(c.due) : "–"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
         <p className="mt-2 text-xs text-muted">Every customer is in the Excel download (Customers sheet).</p>
       </Panel>
@@ -168,10 +189,10 @@ function Kpi({
 }) {
   const body = (
     <>
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">{label}</div>
+      <div className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted sm:text-[11px]">{label}</div>
       <div
         className={[
-          "mt-0.5 font-display text-2xl font-semibold",
+          "mt-0.5 truncate font-display text-xl font-semibold sm:text-2xl",
           tone === "green" ? "text-emerald-300" : "",
           tone === "rose" ? "text-rose-300" : "",
           tone === "amber" ? "text-amber-300" : "",
@@ -182,7 +203,7 @@ function Kpi({
       {sub && <div className="mt-0.5 truncate text-xs text-muted">{sub}</div>}
     </>
   );
-  const cls = "block rounded-2xl border border-line bg-panel px-4 py-3";
+  const cls = "block min-w-0 rounded-2xl border border-line bg-panel px-3 py-2.5 sm:px-4 sm:py-3";
   return href ? (
     <Link href={href} className={`${cls} transition hover:border-rose-400/60`} title="Show who owes money">
       {body}
@@ -194,8 +215,8 @@ function Kpi({
 
 function Panel({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-line bg-panel p-4">
-      <div className="mb-3 flex items-baseline justify-between gap-2">
+    <div className="min-w-0 rounded-2xl border border-line bg-panel p-3 sm:p-4">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-2">
         <h2 className="font-display text-sm font-semibold">{title}</h2>
         {hint && <span className="text-[11px] text-muted">{hint}</span>}
       </div>
