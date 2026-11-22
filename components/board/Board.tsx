@@ -275,7 +275,7 @@ export function Board({
           tabIndex={edges.left ? 0 : -1}
           style={{ left: NAME_W + 8 }}
           className={cn(
-            "absolute top-1/2 z-30 hidden size-8 -translate-y-1/2 place-items-center rounded-full border border-line bg-panel/90 text-muted shadow-lg backdrop-blur transition hover:text-ink sm:grid",
+            "absolute top-1/2 z-30 grid size-9 -translate-y-1/2 place-items-center sm:size-8 rounded-full border border-line bg-panel/90 text-muted shadow-lg backdrop-blur transition hover:text-ink",
             edges.left ? "opacity-100" : "pointer-events-none opacity-0",
           )}
         >
@@ -287,7 +287,7 @@ export function Board({
           aria-label="Later times"
           tabIndex={edges.right ? 0 : -1}
           className={cn(
-            "absolute right-2 top-1/2 z-30 hidden size-8 -translate-y-1/2 place-items-center rounded-full border border-line bg-panel/90 text-muted shadow-lg backdrop-blur transition hover:text-ink sm:grid",
+            "absolute right-2 top-1/2 z-30 grid size-9 -translate-y-1/2 place-items-center sm:size-8 rounded-full border border-line bg-panel/90 text-muted shadow-lg backdrop-blur transition hover:text-ink",
             edges.right ? "opacity-100" : "pointer-events-none opacity-0",
           )}
         >
