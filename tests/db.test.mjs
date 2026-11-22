@@ -58,7 +58,7 @@ console.log('test day', D);
 // ---------------------------------------------------------------------------
 {
   const db = await makeDb();
-  for (const f of ['migrations/0001_init.sql', 'migrations/0002_grants.sql', 'migrations/0003_config.sql', 'migrations/0004_games_first.sql', 'migrations/0005_rls_perf.sql']) await db.exec(read(f));
+  for (const f of ['migrations/0001_init.sql', 'migrations/0002_grants.sql', 'migrations/0003_config.sql', 'migrations/0004_games_first.sql', 'migrations/0005_rls_perf.sql', 'migrations/0006_payments.sql']) await db.exec(read(f));
   await db.exec(`update settings set open_time='11:00', close_time='02:00'`);
   await db.exec(read('seed.sql'));
   await db.exec(read('seed.sql')); // seed is safe to re-run
@@ -157,6 +157,52 @@ console.log('test day', D);
 }
 
 // ---------------------------------------------------------------------------
+// 1b. Payments (0006): ledger keeps paid_amount in sync, staff record, owner deletes
+// ---------------------------------------------------------------------------
+{
+  const db = await makeDb();
+  for (const f of ['migrations/0001_init.sql', 'migrations/0002_grants.sql', 'migrations/0003_config.sql', 'migrations/0004_games_first.sql', 'migrations/0005_rls_perf.sql']) await db.exec(read(f));
+  await db.exec(read('seed.sql'));
+  await db.exec(read('migrations/0006_payments.sql'));
+  await db.exec(read('migrations/0006_payments.sql')); // safe to re-run
+  await addUsers(db);
+  const paidOf = async (id) => Number((await db.query(`select paid_amount from bookings where id = $1`, [id])).rows[0].paid_amount);
+  const b = (await db.query(`select id from bookings where customer_name = 'Rohan'`)).rows[0].id;
+  ok((await paidOf(b)) === 0, 'existing bookings start unpaid');
+
+  await as(db, 'authenticated', STAFF);
+  await db.query(`insert into booking_payments (booking_id, amount, method, note, created_by) values ($1, 500, 'upi', 'Advance', $2)`, [b, STAFF]);
+  ok((await paidOf(b)) === 500, 'advance updates paid_amount');
+  await db.query(`insert into booking_payments (booking_id, amount, method, created_by) values ($1, 700, 'cash', $2)`, [b, STAFF]);
+  ok((await paidOf(b)) === 1200, 'balance adds up');
+  await db.query(`insert into booking_payments (booking_id, amount, kind, method, created_by) values ($1, 200, 'refund', 'cash', $2)`, [b, STAFF]);
+  ok((await paidOf(b)) === 1000, 'refund subtracts');
+  await db.query(`update bookings set paid_amount = 99999 where id = $1`, [b]);
+  ok((await paidOf(b)) === 1000, 'paid_amount cannot be set by hand');
+  await db.query(`update bookings set price = 900, notes = 'discount' where id = $1`, [b]);
+  ok(Number((await db.query(`select price from bookings where id = $1`, [b])).rows[0].price) === 900, 'staff can set a custom price');
+  await expectErr(db, `update bookings set price = -1 where id = $1`, [b], 'check constraint', 'negative price rejected');
+  await expectErr(db, `insert into booking_payments (booking_id, amount, created_by) values ($1, 0, $2)`, [b, STAFF], 'check constraint', 'zero payment rejected');
+  await expectErr(db, `insert into booking_payments (booking_id, amount, created_by) values ($1, 10, $2)`, [b, OWNER], 'row-level security', 'staff cannot record a payment as someone else');
+  ok((await db.query(`delete from booking_payments where booking_id = $1 returning id`, [b])).rows.length === 0, 'staff cannot delete payments');
+  ok((await db.query(`update booking_payments set amount = 1 where booking_id = $1 returning id`, [b]).catch(() => ({ rows: [] }))).rows.length === 0, 'payments cannot be edited');
+  await as(db, 'authenticated', RANDO);
+  ok((await db.query(`select * from booking_payments`)).rows.length === 0, 'non-staff see no payments');
+  await as(db, 'anon');
+  await expectErr(db, `select * from booking_payments`, [], 'permission denied', 'anon cannot read payments');
+  await as(db, 'authenticated', OWNER);
+  const refund = (await db.query(`select id from booking_payments where kind = 'refund'`)).rows[0].id;
+  await db.query(`delete from booking_payments where id = $1`, [refund]);
+  ok((await paidOf(b)) === 1200, 'owner deleting an entry recomputes paid_amount');
+  await db.query(`delete from bookings where id = $1`, [b]);
+  ok((await db.query(`select count(*)::int c from booking_payments`)).rows[0].c === 0, 'deleting a booking removes its payments');
+  await as(db, 'anon');
+  const r = (await db.query(RB, ['$D', 'PS5', '$DT12:00+05:30', 60, 'Riya', '98765 43210', 2, null, null])).rows[0].r;
+  await as(db, null);
+  ok((await db.query(`select paid_amount::int p from bookings where id = $1`, [r.id])).rows[0]?.p === 0, 'online requests start unpaid');
+}
+
+// ---------------------------------------------------------------------------
 // 2. Upgrade path (what a live database goes through): 0001 → 0002 → v1 data → 0003
 // ---------------------------------------------------------------------------
 {
@@ -170,6 +216,8 @@ console.log('test day', D);
   `);
   await db.exec(read('migrations/0003_config.sql'));
   await db.exec(read('migrations/0004_games_first.sql'));
+  await db.exec(read('migrations/0005_rls_perf.sql'));
+  await db.exec(read('migrations/0006_payments.sql'));
   const links = (await db.query(`select g.name, gw.world from game_worlds gw join games g on g.id = gw.game_id`)).rows;
   ok(links.length === 1 && links[0].name === 'Tekken' && links[0].world === 'PS5', '0004 moves game worlds into links: ' + JSON.stringify(links));
   const types = (await db.query(`select name, hourly_rate::int r, icon, color from station_types order by sort_order`)).rows;

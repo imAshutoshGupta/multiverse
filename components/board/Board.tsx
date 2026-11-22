@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, cn, ErrorNote, Input, STATUS_STYLE, StatusBadge } from "@/components/ui";
+import { Button, cn, ErrorNote, Input, PayBadge, payText, STATUS_STYLE, StatusBadge } from "@/components/ui";
 import { useLiveBookings } from "@/components/staff/useBookings";
 import type { InitialBookings } from "@/lib/bookingsWindow";
-import { bookingPrice, formatINR, stationPricing, stationRate } from "@/lib/availability";
+import { formatINR, stationPricing, stationRate } from "@/lib/availability";
+import { bookingPay, paymentsReady, type PaySummary } from "@/lib/payments";
 import { displayPhone } from "@/lib/phone";
-import { addDays, businessWindow, daySlots, fmtDay, fmtTime, istDate, minutesBetween } from "@/lib/time";
+import { addDays, businessWindow, daySlots, fmtDay, fmtTime, istDate } from "@/lib/time";
 import type { Closure, Game, Settings, Station, StationType } from "@/lib/types";
 import { useClock } from "@/lib/useClock";
 import { BookingDialog, type DialogTarget } from "./BookingDialog";
@@ -58,14 +59,25 @@ export function Board({
   const stationById = useMemo(() => new Map(stations.map((s) => [s.id, s])), [stations]);
   const gameById = useMemo(() => new Map(games.map((g) => [g.id, g])), [games]);
 
+  // null = can't tell yet (no bookings loaded); false = database still needs migration 0006
+  const payReady: boolean | null = !bookings?.length ? null : paymentsReady(bookings[0]);
+  const payById = useMemo(() => {
+    const m = new Map<string, PaySummary>();
+    for (const b of bookings ?? []) m.set(b.id, bookingPay(b, stationById.get(b.station_id), types));
+    return m;
+  }, [bookings, stationById, types]);
+
   const stats = useMemo(() => {
     const counted = visible.filter((b) => b.status !== "no_show");
-    const revenue = counted.reduce((sum, b) => {
-      const st = stationById.get(b.station_id);
-      return sum + bookingPrice(st, types, minutesBetween(b.starts_at, b.ends_at), b.party_size);
-    }, 0);
+    const revenue = counted.reduce((sum, b) => sum + (payById.get(b.id)?.total ?? 0), 0);
+    // Money actually in hand for this day's bookings (cancelled ones too, until refunded)
+    const collected = (bookings ?? []).reduce((sum, b) => sum + (payById.get(b.id)?.paid ?? 0), 0);
+    const dues = visible.map((b) => payById.get(b.id)).filter((p): p is PaySummary => !!p && p.due > 0);
     const t = now.getTime();
     return {
+      collected,
+      due: dues.reduce((sum, p) => sum + p.due, 0),
+      dueCount: dues.length,
       total: counted.length,
       pending: visible.filter((b) => b.status === "pending").length,
       live: visible.filter(
@@ -73,7 +85,8 @@ export function Board({
       ).length,
       revenue,
     };
-  }, [visible, stationById, now, types]);
+  }, [visible, bookings, payById, now]);
+  const loading = bookings === null;
 
   const slotMs = settings.slot_minutes * 60_000;
   const isToday = date === istDate(now);
@@ -120,12 +133,24 @@ export function Board({
       </div>
 
       {/* Stats */}
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Stat label="Bookings" value={stats.total} />
-        <Stat label="Waiting to confirm" value={stats.pending} tone={stats.pending ? "amber" : undefined} />
-        <Stat label="Playing now" value={isToday ? stats.live : "–"} tone={stats.live && isToday ? "green" : undefined} />
-        <Stat label="Expected revenue" value={formatINR(stats.revenue)} />
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <Stat label="Bookings" value={loading ? "…" : stats.total} />
+        <Stat label="Waiting to confirm" value={loading ? "…" : stats.pending} tone={stats.pending ? "amber" : undefined} />
+        <Stat label="Playing now" value={loading ? "…" : isToday ? stats.live : "–"} tone={stats.live && isToday ? "green" : undefined} />
+        <Stat label="Expected revenue" value={loading ? "…" : formatINR(stats.revenue)} />
+        <Stat label="Collected" value={loading ? "…" : payReady === false ? "–" : formatINR(stats.collected)} tone={stats.collected ? "green" : undefined} />
+        <Stat
+          label={stats.dueCount ? `Due · ${stats.dueCount} customer${stats.dueCount > 1 ? "s" : ""}` : "Due"}
+          value={loading ? "…" : payReady === false ? "–" : formatINR(stats.due)}
+          tone={stats.due ? "rose" : undefined}
+        />
       </div>
+      {payReady === false && (
+        <p className="mb-4 rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+          Payments aren&apos;t switched on yet. Run <code className="font-mono">supabase/migrations/0006_payments.sql</code> in the
+          Supabase SQL Editor, then reload.
+        </p>
+      )}
 
       <ErrorNote>{error && `Couldn't load bookings: ${error}`}</ErrorNote>
       {closed && (
@@ -137,7 +162,7 @@ export function Board({
 
       {/* Grid */}
       <div className="overflow-hidden rounded-2xl border border-line bg-panel">
-        <div ref={scrollRef} className="overflow-x-auto">
+        <div ref={scrollRef} className={cn("overflow-x-auto transition-opacity", loading && "pointer-events-none opacity-50")} aria-busy={loading}>
           <div style={{ width: NAME_W + gridWidth }} className="relative">
             {/* time header */}
             <div className="sticky top-0 z-20 flex border-b border-line bg-panel">
@@ -195,6 +220,8 @@ export function Board({
                       const left = ((new Date(b.starts_at).getTime() - opensAt.getTime()) / slotMs) * COL;
                       const width = ((new Date(b.ends_at).getTime() - new Date(b.starts_at).getTime()) / slotMs) * COL;
                       const game = b.game_id ? gameById.get(b.game_id)?.name : null;
+                      const pay = payReady ? payById.get(b.id) : undefined;
+                      const payLine = pay ? payText(pay, true) : "";
                       return (
                         <button
                           key={b.id}
@@ -205,7 +232,7 @@ export function Board({
                             STATUS_STYLE[b.status],
                             b.status === "pending" && "border-dashed",
                           )}
-                          title={`${b.customer_name} · ${fmtTime(b.starts_at)}–${fmtTime(b.ends_at)}`}
+                          title={`${b.customer_name} · ${fmtTime(b.starts_at)}–${fmtTime(b.ends_at)}${payLine ? ` · ${payLine}` : ""}`}
                         >
                           <span className="truncate text-xs font-bold">
                             {b.source === "online" && "🌐 "}
@@ -216,6 +243,12 @@ export function Board({
                             {fmtTime(b.starts_at)}–{fmtTime(b.ends_at)}
                             {game && ` · ${game}`}
                           </span>
+                          {pay && pay.state !== "closed" && (
+                            <span
+                              aria-label={payLine}
+                              className={cn("absolute inset-x-0 bottom-0 h-1", PAY_BAR[pay.state])}
+                            />
+                          )}
                         </button>
                       );
                     })}
@@ -237,7 +270,7 @@ export function Board({
         </div>
       </div>
 
-      <Legend />
+      <Legend payments={payReady !== false} />
 
       {/* Agenda: easier to scan on a phone */}
       <section className="mt-6">
@@ -275,7 +308,10 @@ export function Board({
                         {b.phone && ` · ${displayPhone(b.phone)}`}
                       </span>
                     </span>
-                    <StatusBadge status={b.status} />
+                    <span className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
+                      {payReady && payById.get(b.id) && <PayBadge pay={payById.get(b.id)!} />}
+                      <StatusBadge status={b.status} />
+                    </span>
                   </button>
                 </li>
               );
@@ -294,12 +330,22 @@ export function Board({
         games={games}
         bookings={bookings ?? []}
         isOwner={isOwner}
+        paymentsOn={payReady !== false}
       />
     </main>
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: "amber" | "green" }) {
+/** Solid colour for the thin payment bar along the bottom of a booking block. */
+const PAY_BAR: Record<string, string> = {
+  unpaid: "bg-rose-500",
+  advance: "bg-amber-400",
+  paid: "bg-emerald-400",
+  overpaid: "bg-sky-400",
+  closed: "",
+};
+
+function Stat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: "amber" | "green" | "rose" }) {
   return (
     <div className="rounded-2xl border border-line bg-panel px-4 py-3">
       <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">{label}</div>
@@ -308,6 +354,7 @@ function Stat({ label, value, tone }: { label: string; value: React.ReactNode; t
           "mt-0.5 font-display text-2xl font-semibold",
           tone === "amber" && "text-amber-300",
           tone === "green" && "text-emerald-300",
+          tone === "rose" && "text-rose-300",
         )}
       >
         {value}
@@ -316,7 +363,7 @@ function Stat({ label, value, tone }: { label: string; value: React.ReactNode; t
   );
 }
 
-function Legend() {
+function Legend({ payments }: { payments: boolean }) {
   const items: [string, string][] = [
     ["pending", "Waiting to confirm (🌐 = online)"],
     ["confirmed", "Confirmed"],
@@ -332,6 +379,23 @@ function Legend() {
           {label}
         </span>
       ))}
+      {payments && (
+        <span className="flex items-center gap-3 sm:ml-auto">
+          <span className="font-semibold">Payment bar:</span>
+          {(
+            [
+              ["unpaid", "Not paid"],
+              ["advance", "Advance, balance due"],
+              ["paid", "Paid"],
+            ] as const
+          ).map(([k, label]) => (
+            <span key={k} className="flex items-center gap-1.5">
+              <span className={cn("h-1 w-4 rounded", PAY_BAR[k])} />
+              {label}
+            </span>
+          ))}
+        </span>
+      )}
     </div>
   );
 }

@@ -123,3 +123,37 @@ test("games map to the worlds they run on", () => {
   assert.deepEqual(worldsForGame({ worlds: [] }, ws).length, 3, "unlinked = everywhere");
   assert.deepEqual(worldsForGame({ worlds: ["PC"] }, ws), [], "only on a world that isn't open yet = coming soon");
 });
+
+import { bookingTotal, matchesPayFilter, paySummary } from "../lib/payments";
+
+test("payment status: unpaid, advance, paid, overpaid, closed", () => {
+  assert.deepEqual(paySummary("confirmed", 1200, 0), { total: 1200, paid: 0, due: 1200, state: "unpaid" });
+  assert.deepEqual(paySummary("confirmed", 1200, "500.00"), { total: 1200, paid: 500, due: 700, state: "advance" });
+  assert.deepEqual(paySummary("completed", 1200, 1200), { total: 1200, paid: 1200, due: 0, state: "paid" });
+  assert.equal(paySummary("arrived", 1200, 1500).state, "overpaid");
+  assert.equal(paySummary("arrived", 1200, 1500).due, 0);
+  assert.deepEqual(paySummary("cancelled", 1200, 300), { total: 1200, paid: 300, due: 0, state: "closed" }, "nothing due once cancelled");
+  assert.equal(paySummary("no_show", 1200, 0).due, 0);
+  assert.equal(paySummary("pending", 600, undefined).state, "unpaid", "missing paid_amount (before migration) = 0");
+});
+
+test("booking total: custom price wins over standard rate", () => {
+  const types = [{ name: "PS5", hourly_rate: 150, pricing: "per_station" }] as never[];
+  const st = { hourly_rate: null, type: "PS5" };
+  const b = { starts_at: "2026-11-23T10:30:00Z", ends_at: "2026-11-23T12:30:00Z", party_size: 2 };
+  assert.equal(bookingTotal(b, st, types), 300);
+  assert.equal(bookingTotal({ ...b, price: 250 }, st, types), 250);
+  assert.equal(bookingTotal({ ...b, price: "0.00" }, st, types), 0, "free booking");
+  assert.equal(bookingTotal({ ...b, price: null }, st, types), 300);
+});
+
+test("payment filters", () => {
+  const unpaid = paySummary("confirmed", 500, 0);
+  const adv = paySummary("confirmed", 500, 200);
+  const paid = paySummary("completed", 500, 500);
+  const gone = paySummary("cancelled", 500, 0);
+  assert.deepEqual([unpaid, adv, paid, gone].map((s) => matchesPayFilter(s, "due")), [true, true, false, false]);
+  assert.deepEqual([unpaid, adv, paid, gone].map((s) => matchesPayFilter(s, "advance")), [false, true, false, false]);
+  assert.deepEqual([unpaid, adv, paid, gone].map((s) => matchesPayFilter(s, "paid")), [false, false, true, false]);
+  assert.ok([unpaid, adv, paid, gone].every((s) => matchesPayFilter(s, "")));
+});

@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, type ComponentProps, type ReactNode } from "react";
+import { formatINR } from "@/lib/availability";
+import { PAY_LABEL, type PaySummary, type PayState } from "@/lib/payments";
 import type { BookingStatus } from "@/lib/types";
 import { STATUS_LABEL } from "@/lib/types";
 
@@ -92,6 +94,43 @@ export function StatusBadge({ status }: { status: BookingStatus }) {
   return (
     <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold", STATUS_STYLE[status])}>
       {STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+export const PAY_STYLE: Record<PayState, string> = {
+  unpaid: "bg-rose-500/10 text-rose-200 border-rose-500/50",
+  advance: "bg-amber-400/10 text-amber-200 border-amber-400/50",
+  paid: "bg-emerald-400/10 text-emerald-200 border-emerald-400/50",
+  overpaid: "bg-sky-400/10 text-sky-200 border-sky-400/50",
+  closed: "bg-transparent text-muted border-line",
+};
+
+/** Short payment label: "Not paid", "₹500 adv · ₹700 due", "Paid", "Paid +₹100". */
+export function payText(p: PaySummary, compact = false): string {
+  switch (p.state) {
+    case "unpaid":
+      return compact ? `Due ${formatINR(p.due)}` : `Not paid · ${formatINR(p.due)} due`;
+    case "advance":
+      return compact ? `Adv ${formatINR(p.paid)} · Due ${formatINR(p.due)}` : `${formatINR(p.paid)} advance · ${formatINR(p.due)} due`;
+    case "paid":
+      return compact ? "Paid" : `Paid ${formatINR(p.paid)}`;
+    case "overpaid":
+      return `Paid +${formatINR(p.paid - p.total)} extra`;
+    case "closed":
+      return p.paid > 0 ? `${formatINR(p.paid)} kept` : "";
+  }
+}
+
+export function PayBadge({ pay, compact, className }: { pay: PaySummary; compact?: boolean; className?: string }) {
+  const text = payText(pay, compact);
+  if (!text) return null;
+  return (
+    <span
+      title={pay.state === "closed" ? "Cancelled / no-show: money collected and not refunded" : PAY_LABEL[pay.state]}
+      className={cn("inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold", PAY_STYLE[pay.state], className)}
+    >
+      {text}
     </span>
   );
 }

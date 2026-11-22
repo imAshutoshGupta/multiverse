@@ -22,7 +22,7 @@ Stack: Next.js 16 · Supabase (Postgres, Auth, Realtime) · Tailwind 4. Runs on 
 ## Setup (about 10 minutes)
 
 1. **Create a Supabase project** at <https://supabase.com> (free). Pick the Mumbai region (`ap-south-1`).
-2. **Create the database:** open *SQL Editor* and run, each in its own query tab and in this order: `supabase/migrations/0001_init.sql`, `0002_grants.sql`, `0003_config.sql`, then `0004_games_first.sql`. For the demo, also run `supabase/seed.sql` (sample stations, games and today's bookings). If Supabase warns about RLS, choose "Run and enable RLS". The script turns RLS on itself, so either choice is fine.
+2. **Create the database:** open *SQL Editor* and run, each in its own query tab and in this order: `supabase/migrations/0001_init.sql`, `0002_grants.sql`, `0003_config.sql`, `0004_games_first.sql`, `0005_rls_perf.sql`, then `0006_payments.sql` (payments: advance, balance, dues). For the demo, also run `supabase/seed.sql` (sample stations, games and today's bookings). If Supabase warns about RLS, choose "Run and enable RLS". The script turns RLS on itself, so either choice is fine.
 3. **Lock down sign-ups:** *Authentication → Sign In / Providers*: turn **off** "Allow new users to sign up". Staff accounts are created by you, not by the public.
 4. **Create the owner login:** *Authentication → Users → Add user* (email + password, auto-confirm). Then in the SQL Editor:
    ```sql

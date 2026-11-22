@@ -1,13 +1,14 @@
 "use client";
-import { useMemo, useState } from "react";
-import { Button, ButtonLink, ErrorNote, Field, Input, Modal, Select, StatusBadge, Textarea } from "@/components/ui";
+import { useEffect, useMemo, useState } from "react";
+import { Button, ButtonLink, cn, ErrorNote, Field, Input, Modal, PayBadge, Select, StatusBadge, Textarea } from "@/components/ui";
 import { bookingErrorMessage } from "@/components/staff/useBookings";
 import { bookingPrice, formatINR, stationFree } from "@/lib/availability";
 import { message } from "@/lib/messages";
 import { displayPhone, normalizePhone, telLink, waLink } from "@/lib/phone";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { businessWindow, daySlots, fmtDuration, fmtTime, minutesBetween } from "@/lib/time";
-import type { Booking, BookingStatus, Game, Settings, Station, StationType } from "@/lib/types";
+import { bookingTotal, METHOD_LABEL, paySummary, paymentsReady } from "@/lib/payments";
+import { businessWindow, daySlots, fmtDay, fmtDuration, fmtTime, istDate, minutesBetween } from "@/lib/time";
+import type { Booking, BookingPayment, BookingStatus, Game, PaymentKind, PaymentMethod, Settings, Station, StationType } from "@/lib/types";
 import { BLOCKING_STATUSES } from "@/lib/types";
 
 export type DialogTarget =
@@ -24,6 +25,7 @@ export function BookingDialog({
   games,
   bookings,
   isOwner,
+  paymentsOn = true,
 }: {
   target: DialogTarget | null;
   onClose: () => void;
@@ -34,6 +36,7 @@ export function BookingDialog({
   games: Game[];
   bookings: Booking[];
   isOwner: boolean;
+  paymentsOn?: boolean;
 }) {
   const title = !target ? "" : target.mode === "new" ? "New booking" : target.booking.customer_name;
   return (
@@ -50,6 +53,7 @@ export function BookingDialog({
           games={games}
           bookings={bookings}
           isOwner={isOwner}
+          paymentsOn={paymentsOn}
         />
       )}
     </Modal>
@@ -66,6 +70,7 @@ function BookingForm({
   games,
   bookings,
   isOwner,
+  paymentsOn,
 }: {
   target: DialogTarget;
   onDone: () => void;
@@ -76,6 +81,7 @@ function BookingForm({
   games: Game[];
   bookings: Booking[];
   isOwner: boolean;
+  paymentsOn: boolean;
 }) {
   const existing = target.mode === "edit" ? target.booking : null;
   const slots = useMemo(() => daySlots(date, settings), [date, settings]);
@@ -95,6 +101,11 @@ function BookingForm({
   const [gameId, setGameId] = useState(existing?.game_id ?? "");
   const [party, setParty] = useState(existing?.party_size ?? 1);
   const [notes, setNotes] = useState(existing?.notes ?? "");
+  // Agreed amount; blank = the station's standard rate.
+  const [priceInput, setPriceInput] = useState(existing?.price != null ? String(Number(existing.price)) : "");
+  const [advance, setAdvance] = useState("");
+  const [advanceMethod, setAdvanceMethod] = useState<PaymentMethod>("upi");
+  const [savedWithError, setSavedWithError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -125,12 +136,19 @@ function BookingForm({
   const phoneInvalid = phone.trim() !== "" && !phoneNorm;
   const overCapacity = station ? party > station.max_players : false;
   const stationGames = games.filter((g) => g.active && (!g.worlds.length || (station && g.worlds.includes(station.type))));
-  const price = bookingPrice(station, types, minutes, party);
+  const standardPrice = bookingPrice(station, types, minutes, party);
+  const priceValue = priceInput.trim() === "" ? null : Number(priceInput);
+  const priceInvalid = priceValue !== null && (!Number.isFinite(priceValue) || priceValue < 0 || priceValue > 1_000_000);
+  const total = priceValue ?? standardPrice;
+  const advanceValue = advance.trim() === "" ? 0 : Number(advance);
+  const advanceInvalid = !Number.isFinite(advanceValue) || advanceValue < 0 || advanceValue > 1_000_000;
 
   async function save(status?: BookingStatus) {
     setError(null);
     if (!name.trim()) return setError("Enter the customer's name.");
     if (phoneInvalid) return setError("Phone number doesn't look right.");
+    if (priceInvalid) return setError("Amount doesn't look right.");
+    if (!existing && advanceInvalid) return setError("Advance amount doesn't look right.");
     setSaving(true);
     const sb = supabaseBrowser();
     const row = {
@@ -142,19 +160,43 @@ function BookingForm({
       ends_at: new Date(endMs).toISOString(),
       party_size: party,
       notes: notes.trim() || null,
+      // Only send price when it's used, so saving still works before migration 0006.
+      ...(priceValue !== null || existing?.price != null ? { price: priceValue } : {}),
       ...(status ? { status } : {}),
     };
-    let res;
     if (existing) {
-      res = await sb.from("bookings").update(row).eq("id", existing.id);
-    } else {
-      const { data } = await sb.auth.getUser();
-      res = await sb
-        .from("bookings")
-        .insert({ ...row, status: status ?? "confirmed", source: "staff", created_by: data.user?.id ?? null });
+      const res = await sb.from("bookings").update(row).eq("id", existing.id);
+      setSaving(false);
+      if (res.error) return setError(bookingErrorMessage(res.error));
+      return onDone();
+    }
+    const { data: auth } = await sb.auth.getUser();
+    const userId = auth.user?.id ?? null;
+    const res = await sb
+      .from("bookings")
+      .insert({ ...row, status: status ?? "confirmed", source: "staff", created_by: userId })
+      .select("id")
+      .single();
+    if (res.error) {
+      setSaving(false);
+      return setError(bookingErrorMessage(res.error));
+    }
+    if (advanceValue > 0) {
+      const pay = await sb.from("booking_payments").insert({
+        booking_id: res.data.id,
+        amount: advanceValue,
+        kind: "payment",
+        method: advanceMethod,
+        note: "Advance",
+        created_by: userId,
+      });
+      if (pay.error) {
+        setSaving(false);
+        setSavedWithError(true);
+        return setError(`Booking added, but the advance wasn't recorded: ${bookingErrorMessage(pay.error)} Open the booking from the board to add it.`);
+      }
     }
     setSaving(false);
-    if (res.error) return setError(bookingErrorMessage(res.error));
     onDone();
   }
 
@@ -244,18 +286,54 @@ function BookingForm({
             ))}
           </Select>
         </Field>
-        <Field label="Est. amount">
-          <div className="flex h-10 items-center rounded-xl border border-dashed border-line px-3 text-sm">
-            {formatINR(price)}
-            <span className="ml-auto text-xs text-muted">
-              {fmtTime(new Date(startMs))}–{fmtTime(new Date(endMs))}
-            </span>
-          </div>
+        <Field
+          label="Amount (₹)"
+          hint={priceValue === null ? `Standard rate · ${fmtTime(new Date(startMs))}–${fmtTime(new Date(endMs))}` : `Standard ${formatINR(standardPrice)} · type to change (discount, package)`}
+        >
+          <Input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="any"
+            value={priceInput}
+            onChange={(e) => setPriceInput(e.target.value)}
+            placeholder={String(standardPrice)}
+            aria-invalid={priceInvalid}
+          />
         </Field>
+        {!existing && paymentsOn && (
+          <>
+            <Field label="Advance paid (₹)" hint="Optional. Recorded as a payment.">
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                value={advance}
+                onChange={(e) => setAdvance(e.target.value)}
+                placeholder="0"
+                aria-invalid={advanceInvalid}
+              />
+            </Field>
+            <Field label="Paid by">
+              <Select value={advanceMethod} onChange={(e) => setAdvanceMethod(e.target.value as PaymentMethod)} disabled={!advanceValue}>
+                {Object.entries(METHOD_LABEL).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </>
+        )}
       </div>
       <Field label="Notes">
         <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500} rows={2} />
       </Field>
+
+      {existing && paymentsOn && paymentsReady(existing) && (
+        <PaymentsPanel booking={existing} total={total} totalChanged={total !== bookingTotal(existing, stations.find((s) => s.id === existing.station_id), types)} isOwner={isOwner} />
+      )}
 
       {conflict && <ErrorNote>This overlaps another booking on {station?.name}. Pick another time or station.</ErrorNote>}
       {pastClose && !conflict && (
@@ -334,12 +412,208 @@ function BookingForm({
               {saving ? "Saving…" : "Save"}
             </Button>
           </>
+        ) : savedWithError ? (
+          <Button className="ml-auto" onClick={onDone}>
+            Close
+          </Button>
         ) : (
           <Button className="ml-auto" disabled={saving || conflict || !stationId} onClick={() => save()}>
-            {saving ? "Saving…" : "Add booking"}
+            {saving ? "Saving…" : advanceValue > 0 ? `Add booking + ${formatINR(advanceValue)} advance` : "Add booking"}
           </Button>
         )}
       </div>
     </div>
+  );
+}
+
+/** Payment history for one booking, plus quick "record payment / refund" entry. */
+function PaymentsPanel({
+  booking,
+  total,
+  totalChanged,
+  isOwner,
+}: {
+  booking: Booking;
+  total: number;
+  totalChanged: boolean;
+  isOwner: boolean;
+}) {
+  const [payments, setPayments] = useState<BookingPayment[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState<PaymentMethod>("cash");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const [version, setVersion] = useState(0);
+  const load = () => setVersion((v) => v + 1);
+
+  useEffect(() => {
+    let alive = true;
+    supabaseBrowser()
+      .from("booking_payments")
+      .select("*")
+      .eq("booking_id", booking.id)
+      .order("created_at")
+      .then(({ data, error }) => {
+        if (!alive) return;
+        if (error) setError(bookingErrorMessage(error));
+        else setPayments(data as BookingPayment[]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [booking.id, version]);
+
+  const paid = (payments ?? []).reduce((sum, p) => sum + (p.kind === "refund" ? -1 : 1) * Number(p.amount), 0);
+  const summary = paySummary(booking.status, total, payments ? paid : booking.paid_amount);
+  const amountValue = amount.trim() === "" ? summary.due : Number(amount);
+  const amountInvalid = !Number.isFinite(amountValue) || amountValue <= 0 || amountValue > 1_000_000;
+
+  async function record(kind: PaymentKind, value = amountValue) {
+    setError(null);
+    if (!Number.isFinite(value) || value <= 0) return setError("Enter an amount.");
+    if (kind === "refund" && value > summary.paid) return setError(`Refund can't be more than what was paid (${formatINR(summary.paid)}).`);
+    setBusy(true);
+    const sb = supabaseBrowser();
+    const { data: auth } = await sb.auth.getUser();
+    const { error } = await sb.from("booking_payments").insert({
+      booking_id: booking.id,
+      amount: value,
+      kind,
+      method,
+      note: note.trim() || null,
+      created_by: auth.user?.id ?? null,
+    });
+    setBusy(false);
+    if (error) return setError(bookingErrorMessage(error));
+    setAmount("");
+    setNote("");
+    load();
+  }
+
+  async function remove(id: string) {
+    setBusy(true);
+    const { error } = await supabaseBrowser().from("booking_payments").delete().eq("id", id);
+    setBusy(false);
+    setConfirmDelete(null);
+    if (error) return setError(bookingErrorMessage(error));
+    load();
+  }
+
+  return (
+    <section className="rounded-2xl border border-line bg-panel-2/60 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">Payment</h3>
+        <PayBadge pay={summary} />
+        <span className="ml-auto text-xs text-muted">
+          Total <b className="text-ink">{formatINR(summary.total)}</b> · Paid{" "}
+          <b className="text-emerald-300">{formatINR(summary.paid)}</b> · Due{" "}
+          <b className={cn(summary.due > 0 ? "text-rose-300" : "text-ink")}>{formatINR(summary.due)}</b>
+        </span>
+      </div>
+      {totalChanged && <p className="mt-1 text-[11px] text-amber-300">Total uses your unsaved changes. Press Save to keep them.</p>}
+
+      {payments === null ? (
+        !error && <div className="mt-3 h-8 animate-pulse rounded-lg bg-panel" />
+      ) : payments.length === 0 ? (
+        <p className="mt-2 text-xs text-muted">No payments recorded yet.</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-line/60 text-xs">
+          {payments.map((p) => {
+            const day = istDate(new Date(p.created_at));
+            return (
+              <li key={p.id} className="flex items-center gap-2 py-1.5">
+                <span className={cn("w-20 shrink-0 font-mono font-semibold", p.kind === "refund" ? "text-sky-300" : "text-emerald-300")}>
+                  {p.kind === "refund" ? "−" : "+"}
+                  {formatINR(Number(p.amount))}
+                </span>
+                <span className="shrink-0 rounded-md border border-line px-1.5 py-0.5">{METHOD_LABEL[p.method]}</span>
+                <span className="min-w-0 flex-1 truncate text-muted">
+                  {p.kind === "refund" ? "Refund" : ""}
+                  {p.kind === "refund" && p.note ? " · " : ""}
+                  {p.note}
+                </span>
+                <span className="shrink-0 text-muted">
+                  {day === istDate() ? "" : `${fmtDay(day)}, `}
+                  {fmtTime(p.created_at)}
+                </span>
+                {isOwner &&
+                  (confirmDelete === p.id ? (
+                    <Button variant="danger" size="sm" className="h-6 px-2" disabled={busy} onClick={() => remove(p.id)}>
+                      Delete?
+                    </Button>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDelete(p.id)}
+                      className="cursor-pointer rounded p-0.5 text-muted hover:text-rose-300"
+                      aria-label="Delete payment"
+                      title="Delete this entry (owner only)"
+                    >
+                      ✕
+                    </button>
+                  ))}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className="mt-3 grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[7rem_auto_1fr]">
+        <Input
+          type="number"
+          inputMode="decimal"
+          min={0}
+          step="any"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder={summary.due > 0 ? String(summary.due) : "Amount"}
+          aria-label="Amount"
+          className="h-9"
+        />
+        <div className="flex overflow-hidden rounded-xl border border-line" role="radiogroup" aria-label="Paid by">
+          {(Object.keys(METHOD_LABEL) as PaymentMethod[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={method === m}
+              onClick={() => setMethod(m)}
+              className={cn(
+                "cursor-pointer px-2.5 text-xs font-semibold transition",
+                method === m ? "bg-portal text-on-portal" : "text-muted hover:bg-tint/5 hover:text-ink",
+              )}
+            >
+              {METHOD_LABEL[m]}
+            </button>
+          ))}
+        </div>
+        <Input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={200}
+          placeholder="Note (UPI ref, etc.)"
+          aria-label="Note"
+          className="col-span-2 h-9 sm:col-span-1"
+        />
+      </div>
+      <ErrorNote>{error}</ErrorNote>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button size="sm" variant="success" disabled={busy || amountInvalid} onClick={() => record("payment")}>
+          {amountInvalid ? "Record payment" : `Record ${formatINR(amountValue)} payment`}
+        </Button>
+        {summary.due > 0 && amount.trim() !== "" && amountValue !== summary.due && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => record("payment", summary.due)}>
+            Mark fully paid ({formatINR(summary.due)})
+          </Button>
+        )}
+        {summary.paid > 0 && (
+          <Button size="sm" variant="ghost" disabled={busy || amountInvalid} onClick={() => record("refund")}>
+            {amountInvalid ? "Refund" : `Refund ${formatINR(amountValue)}`}
+          </Button>
+        )}
+      </div>
+    </section>
   );
 }

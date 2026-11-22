@@ -118,8 +118,26 @@ export interface Booking {
   status: BookingStatus;
   source: BookingSource;
   notes: string | null;
+  /** Agreed amount; null = the station's standard rate. Missing before migration 0006. */
+  price?: number | null;
+  /** Payments minus refunds, kept in sync by the database. Missing before migration 0006. */
+  paid_amount?: number;
   created_at: string;
   updated_at: string;
+}
+
+export type PaymentMethod = "cash" | "upi" | "card" | "other";
+export type PaymentKind = "payment" | "refund";
+
+export interface BookingPayment {
+  id: string;
+  booking_id: string;
+  amount: number;
+  kind: PaymentKind;
+  method: PaymentMethod;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface BusyInterval {

@@ -1,6 +1,6 @@
-import { bookingPrice } from "@/lib/availability";
 import { parseFilters, queryBookings } from "@/lib/bookingQuery";
 import { loadCatalog } from "@/lib/catalog";
+import { bookingPay, matchesPayFilter, PAY_LABEL } from "@/lib/payments";
 import { displayPhone } from "@/lib/phone";
 import { requestToday } from "@/lib/serverTime";
 import { businessDateOf, fmtTime, minutesBetween } from "@/lib/time";
@@ -18,12 +18,14 @@ export async function GET(request: Request) {
   if (!user) return new Response("Unauthorized", { status: 401 });
 
   const filters = parseFilters(new URL(request.url).searchParams, await requestToday());
-  const rows = await queryBookings(supabase, settings, filters);
   const stationById = new Map(stations.map((s) => [s.id, s]));
+  const rows = (await queryBookings(supabase, settings, filters))
+    .map((b) => ({ b, pay: bookingPay(b, stationById.get(b.station_id), types) }))
+    .filter(({ pay }) => matchesPayFilter(pay, filters.pay));
   const gameById = new Map(games.map((g) => [g.id, g]));
 
-  const header = ["Date", "Start", "End", "Minutes", "Station", "Type", "Customer", "Phone", "Players", "Game", "Status", "Source", "Amount (INR)", "Notes"];
-  const lines = rows.map((b) => {
+  const header = ["Date", "Start", "End", "Minutes", "Station", "Type", "Customer", "Phone", "Players", "Game", "Status", "Source", "Amount (INR)", "Paid (INR)", "Due (INR)", "Payment", "Notes"];
+  const lines = rows.map(({ b, pay }) => {
     const st = stationById.get(b.station_id);
     const mins = minutesBetween(b.starts_at, b.ends_at);
     return [
@@ -39,7 +41,10 @@ export async function GET(request: Request) {
       b.game_id ? gameById.get(b.game_id)?.name : "",
       STATUS_LABEL[b.status],
       b.source,
-      st ? bookingPrice(st, types, mins, b.party_size) : "",
+      st ? pay.total : "",
+      pay.paid,
+      pay.due,
+      pay.state === "closed" ? "" : PAY_LABEL[pay.state],
       b.notes,
     ]
       .map(csvCell)

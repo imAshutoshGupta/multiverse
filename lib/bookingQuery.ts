@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, businessWindow, parseDateParam } from "./time";
+import { PAY_FILTERS, type PayFilter } from "./payments";
 import type { Booking, BookingStatus, Settings } from "./types";
 import { STATUS_LABEL } from "./types";
 
@@ -9,6 +10,8 @@ export interface BookingFilters {
   to: string;
   q: string;
   status: BookingStatus | "";
+  /** Payment filter, applied after loading (dues depend on each station's price). */
+  pay: PayFilter;
 }
 
 type Params = Record<string, string | string[] | undefined>;
@@ -21,11 +24,13 @@ export function parseFilters(sp: Params | URLSearchParams, today: string): Booki
   let to = get("to") ? parseDateParam(get("to"), today) : addDays(today, 6);
   if (to < from) to = from;
   const status = one(get("status"));
+  const pay = one(get("pay"));
   return {
     from,
     to,
     q: one(get("q")).trim().slice(0, 60),
     status: status in STATUS_LABEL ? (status as BookingStatus) : "",
+    pay: pay in PAY_FILTERS ? (pay as PayFilter) : "",
   };
 }
 
