@@ -1,5 +1,5 @@
 "use client";
-import { CalendarRange, Inbox, ListChecks, LogOut, Settings, type LucideIcon } from "lucide-react";
+import { CalendarRange, Inbox, ChartColumn, LogOut, Settings, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -37,7 +37,7 @@ export function StaffNav({ isOwner, name, logo, cafe }: { isOwner: boolean; name
   const links: NavLink[] = [
     { href: "/staff", label: "Board", icon: CalendarRange },
     { href: "/staff/requests", label: "Requests", icon: Inbox, badge: pending },
-    { href: "/staff/bookings", label: "Bookings", icon: ListChecks },
+    { href: "/staff/analytics", label: "Analytics", icon: ChartColumn },
     ...(isOwner ? [{ href: "/staff/settings", label: "Settings", icon: Settings }] : []),
   ];
   const isActive = (href: string) => (href === "/staff" ? path === "/staff" : path.startsWith(href));

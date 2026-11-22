@@ -16,14 +16,14 @@ import { requestToday } from "@/lib/serverTime";
 import { addDays, fmtDay, fmtTime } from "@/lib/time";
 import { STATUS_LABEL } from "@/lib/types";
 
-export const metadata: Metadata = { title: "Bookings" };
+export const metadata: Metadata = { title: "Analytics" };
 
 const input =
   "h-10 rounded-xl border border-line bg-panel-2 px-3 text-sm text-ink outline-none focus:border-portal";
 /** Rows drawn in the table; the Excel download always has everything. */
 const TABLE_LIMIT = 300;
 
-export default function BookingsPage({ searchParams }: PageProps<"/staff/bookings">) {
+export default function BookingsPage({ searchParams }: PageProps<"/staff/analytics">) {
   return (
     <Suspense fallback={<PageSkeleton />}>
       <BookingsContent searchParams={searchParams} />
@@ -51,7 +51,7 @@ function ranges(today: string): [string, string, string][] {
   ];
 }
 
-async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/bookings">, "searchParams">) {
+async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/analytics">, "searchParams">) {
   const params = await searchParams;
   const { supabase, settings, stations, types, games } = await loadCatalog(); // request-time from here
   const today = await requestToday();
@@ -61,7 +61,7 @@ async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/bookings
   const rows = buildRows(loaded, { stations, games, types, settings }).filter((r) => matchesPayFilter(r.pay, filters.pay));
   const a = analyze(rows);
   const exportQs = filtersQuery(filters);
-  const duesHref = `/staff/bookings?${filtersQuery(filters, { pay: "due" })}`;
+  const duesHref = `/staff/analytics?${filtersQuery(filters, { pay: "due" })}`;
   const worlds = [...new Set(stations.map((s) => s.type))];
   const stationOptions = stations.filter((s) => !filters.world || s.type === filters.world);
   const moreKeys: (keyof BookingFilters)[] = ["status", "pay", "world", "station", "source", "game"];
@@ -72,7 +72,7 @@ async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/bookings
     <main className="mx-auto w-full max-w-7xl px-4 py-4 sm:py-6">
       <div className="flex items-start justify-between gap-3 sm:items-end">
         <div className="min-w-0">
-          <h1 className="font-display text-xl font-semibold sm:text-2xl">Bookings</h1>
+          <h1 className="font-display text-xl font-semibold sm:text-2xl">Analytics</h1>
           <p className="text-sm text-muted">
             {fmtDay(filters.from)}
             {filters.to !== filters.from && ` – ${fmtDay(filters.to)}`} · {rows.length} booking{rows.length === 1 ? "" : "s"}
@@ -102,7 +102,7 @@ async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/bookings
           return (
             <Link
               key={label}
-              href={`/staff/bookings?${filtersQuery(filters, { from, to })}`}
+              href={`/staff/analytics?${filtersQuery(filters, { from, to })}`}
               className={[
                 "shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition",
                 on ? "border-portal bg-portal text-on-portal" : "border-line text-muted hover:border-portal/60 hover:text-ink",
@@ -159,7 +159,7 @@ async function BookingsContent({ searchParams }: Pick<PageProps<"/staff/bookings
           </button>
           {activeFilters > 0 && (
             <Link
-              href={`/staff/bookings?from=${filters.from}&to=${filters.to}`}
+              href={`/staff/analytics?from=${filters.from}&to=${filters.to}`}
               className="inline-flex h-10 items-center rounded-xl border border-line px-3 text-sm font-semibold text-muted hover:text-ink"
             >
               Clear

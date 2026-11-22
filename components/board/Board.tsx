@@ -7,7 +7,7 @@ import type { InitialBookings } from "@/lib/bookingsWindow";
 import { formatINR, stationPricing, stationRate } from "@/lib/availability";
 import { bookingPay, paymentsReady, type PaySummary } from "@/lib/payments";
 import { displayPhone } from "@/lib/phone";
-import { addDays, businessWindow, daySlots, fmtDay, fmtTime, istDate } from "@/lib/time";
+import { addDays, businessWindow, daySlots, fmtDay, fmtDuration, fmtTime, istDate, minutesBetween } from "@/lib/time";
 import type { Booking, Closure, Game, Settings, Station, StationType } from "@/lib/types";
 import { useClock } from "@/lib/useClock";
 import { BookingDialog, type DialogTarget } from "./BookingDialog";
@@ -115,6 +115,20 @@ export function Board({
   const loading = bookings === null;
   // Latest copy of the hovered booking (live updates, e.g. a payment, show straight away)
   const hovered = hover ? visible.find((b) => b.id === hover.booking.id) : undefined;
+
+  // Day list sections: playing now, coming up, finished
+  const dayGroups = useMemo(() => {
+    const t = now.getTime();
+    const groups: Record<Phase, Booking[]> = { now: [], next: [], done: [] };
+    for (const b of visible) groups[phaseOf(b, t)].push(b);
+    return (
+      [
+        { key: "now", title: "Playing now", items: groups.now },
+        { key: "next", title: "Coming up", items: groups.next },
+        { key: "done", title: "Finished", items: groups.done },
+      ] as { key: Phase; title: string; items: Booking[] }[]
+    ).filter((g) => g.items.length);
+  }, [visible, now]);
 
   const slotMs = settings.slot_minutes * 60_000;
   const isToday = date === istDate(now);
@@ -319,9 +333,15 @@ export function Board({
 
       <Legend payments={payReady !== false} />
 
-      {/* Agenda: easier to scan on a phone */}
+      {/* Day list, grouped by what's happening now: easier to scan than the grid on a phone */}
       <section className="mt-6">
-        <h2 className="mb-2 font-display text-base font-semibold">Agenda</h2>
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <h2 className="font-display text-base font-semibold">
+            Bookings · {fmtDay(date)}
+            {!loading && visible.length > 0 && <span className="ml-1.5 font-sans text-sm font-normal text-muted">({visible.length})</span>}
+          </h2>
+          {!loading && stats.pending > 0 && <span className="text-xs font-semibold text-amber-300">{stats.pending} need confirming</span>}
+        </div>
         {bookings === null ? (
           <div className="h-20 animate-pulse rounded-2xl bg-panel" />
         ) : visible.length === 0 ? (
@@ -329,41 +349,32 @@ export function Board({
             No bookings for {fmtDay(date)} yet. Tap any empty slot on the board to add one.
           </p>
         ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-panel">
-            {visible.map((b) => {
-              const st = stationById.get(b.station_id);
-              const ended = new Date(b.ends_at) <= now;
-              return (
-                <li key={b.id}>
-                  <button
-                    onClick={() => setTarget({ mode: "edit", booking: b })}
-                    className={cn(
-                      "flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left hover:bg-tint/5",
-                      ended && "opacity-50",
-                    )}
-                  >
-                    <span className="w-28 shrink-0 font-mono text-xs text-muted">
-                      {fmtTime(b.starts_at)}–{fmtTime(b.ends_at)}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold">
-                        {b.customer_name}
-                        {b.party_size > 1 && <span className="font-normal text-muted"> ×{b.party_size}</span>}
-                      </span>
-                      <span className="block truncate text-xs text-muted">
-                        {st?.name ?? "?"}
-                        {b.phone && ` · ${displayPhone(b.phone)}`}
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center">
-                      {payReady && payById.get(b.id) && <PayBadge pay={payById.get(b.id)!} />}
-                      <StatusBadge status={b.status} />
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="space-y-4">
+            {dayGroups.map((g) => (
+              <div key={g.key}>
+                <h3 className="mb-1.5 flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                  {g.key === "now" && <span className="size-2 animate-pulse rounded-full bg-emerald-400" aria-hidden />}
+                  {g.title} <span className="font-normal">· {g.items.length}</span>
+                </h3>
+                <ul className="divide-y divide-line/70 overflow-hidden rounded-2xl border border-line bg-panel">
+                  {g.items.map((b) => (
+                    <li key={b.id}>
+                      <DayRow
+                        b={b}
+                        phase={g.key}
+                        now={now}
+                        station={stationById.get(b.station_id)}
+                        color={types.find((t) => t.name === stationById.get(b.station_id)?.type)?.color}
+                        game={b.game_id ? gameById.get(b.game_id)?.name : undefined}
+                        pay={payReady ? payById.get(b.id) : undefined}
+                        onOpen={() => setTarget({ mode: "edit", booking: b })}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
@@ -453,5 +464,109 @@ function Legend({ payments }: { payments: boolean }) {
         </span>
       )}
     </div>
+  );
+}
+
+type Phase = "now" | "next" | "done";
+
+function phaseOf(b: Booking, t: number): Phase {
+  const start = new Date(b.starts_at).getTime();
+  const end = new Date(b.ends_at).getTime();
+  if (b.status === "completed" || b.status === "no_show" || end <= t) return "done";
+  if (start <= t) return "now";
+  return "next";
+}
+
+/** "in 25 min", "in 1h 10m" */
+function fromNow(ms: number): string {
+  const m = Math.max(1, Math.round(ms / 60_000));
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
+}
+
+function DayRow({
+  b,
+  phase,
+  now,
+  station,
+  color,
+  game,
+  pay,
+  onOpen,
+}: {
+  b: Booking;
+  phase: Phase;
+  now: Date;
+  station?: Station;
+  color?: string;
+  game?: string;
+  pay?: PaySummary;
+  onOpen: () => void;
+}) {
+  const mins = minutesBetween(b.starts_at, b.ends_at);
+  const start = new Date(b.starts_at).getTime();
+  const end = new Date(b.ends_at).getTime();
+  const t = now.getTime();
+  const when =
+    phase === "now"
+      ? { text: `ends in ${fromNow(end - t)}`, cls: "text-emerald-300" }
+      : phase === "next" && start - t < 3 * 3600_000
+        ? { text: `starts in ${fromNow(start - t)}`, cls: "text-portal" }
+        : null;
+  const badges = (
+    <>
+      {pay && <PayBadge pay={pay} compact />}
+      <StatusBadge status={b.status} />
+    </>
+  );
+  return (
+    <button
+      onClick={onOpen}
+      className={cn(
+        "flex w-full cursor-pointer items-stretch gap-3 px-3 py-3 text-left transition hover:bg-tint/5 sm:px-4",
+        phase === "done" && "opacity-60 hover:opacity-100",
+      )}
+    >
+      <span className="w-16 shrink-0 text-right sm:w-20">
+        <span className="block font-mono text-sm font-semibold">{fmtTime(b.starts_at)}</span>
+        <span className="block text-[11px] text-muted">{fmtDuration(mins)}</span>
+      </span>
+      <span
+        className="w-1 shrink-0 rounded-full bg-line"
+        style={color ? { backgroundColor: color } : undefined}
+        aria-hidden
+      />
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-sm font-semibold">{b.customer_name}</span>
+          {b.party_size > 1 && <span className="shrink-0 text-xs text-muted">×{b.party_size}</span>}
+          {b.source === "online" && (
+            <span
+              className="shrink-0 rounded-md border border-sky-400/40 bg-sky-400/10 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-sky-200"
+              title="Booked by the customer on the website"
+            >
+              Online
+            </span>
+          )}
+        </span>
+        <span className="block truncate text-xs text-muted">
+          {station?.name ?? "?"}
+          {game && ` · ${game}`}
+          {` · until ${fmtTime(b.ends_at)}`}
+          {b.phone && <span className="hidden sm:inline"> · {displayPhone(b.phone)}</span>}
+        </span>
+        {(when || b.status === "pending" || b.notes) && (
+          <span className="mt-0.5 block truncate text-[11px]">
+            {b.status === "pending" && <span className="font-semibold text-amber-300">Needs confirming</span>}
+            {b.status === "pending" && when && " · "}
+            {when && <span className={when.cls}>{when.text}</span>}
+            {b.notes && <span className="text-muted">{(b.status === "pending" || when) && " · "}Note: {b.notes}</span>}
+          </span>
+        )}
+        <span className="mt-1.5 flex flex-wrap gap-1 sm:hidden">{badges}</span>
+      </span>
+      <span className="hidden shrink-0 items-center gap-1.5 sm:flex">{badges}</span>
+    </button>
   );
 }

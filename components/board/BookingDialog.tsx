@@ -6,7 +6,7 @@ import { bookingPrice, formatINR, stationFree } from "@/lib/availability";
 import { message } from "@/lib/messages";
 import { displayPhone, normalizePhone, telLink, waLink } from "@/lib/phone";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import { bookingTotal, METHOD_LABEL, paySummary, paymentsReady } from "@/lib/payments";
+import { bookingTotal, DEFAULT_METHOD, METHOD_LABEL, PICK_METHODS, paySummary, paymentsReady } from "@/lib/payments";
 import { businessWindow, daySlots, fmtDay, fmtDuration, fmtTime, istDate, minutesBetween } from "@/lib/time";
 import type { Booking, BookingPayment, BookingStatus, Game, PaymentKind, PaymentMethod, Settings, Station, StationType } from "@/lib/types";
 import { BLOCKING_STATUSES } from "@/lib/types";
@@ -106,7 +106,7 @@ function BookingForm({
   // New bookings: has the customer paid anything yet?
   const [payMode, setPayMode] = useState<"none" | "advance" | "full">("none");
   const [advance, setAdvance] = useState("");
-  const [advanceMethod, setAdvanceMethod] = useState<PaymentMethod>("upi");
+  const [advanceMethod, setAdvanceMethod] = useState<PaymentMethod>(DEFAULT_METHOD);
   const [savedWithError, setSavedWithError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -488,7 +488,7 @@ function Segmented<T extends string>({
 }
 
 function MethodPicker({ value, onChange }: { value: PaymentMethod; onChange: (m: PaymentMethod) => void }) {
-  return <Segmented value={value} onChange={onChange} options={Object.entries(METHOD_LABEL) as [PaymentMethod, string][]} />;
+  return <Segmented value={value} onChange={onChange} options={PICK_METHODS.map((m) => [m, METHOD_LABEL[m]] as [PaymentMethod, string])} />;
 }
 
 /**
@@ -510,7 +510,7 @@ function PaymentsPanel({
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<PaymentKind>("payment");
   const [amount, setAmount] = useState<string | null>(null); // null = use the suggested amount
-  const [method, setMethod] = useState<PaymentMethod>("cash");
+  const [method, setMethod] = useState<PaymentMethod>(DEFAULT_METHOD);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
