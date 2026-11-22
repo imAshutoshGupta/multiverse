@@ -1,5 +1,5 @@
 "use client";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, cn, ErrorNote, PayBadge, payText, STATUS_STYLE, StatusBadge } from "@/components/ui";
 import { useLiveBookings } from "@/components/staff/useBookings";
@@ -152,6 +152,29 @@ export function Board({
     el.scrollLeft = Math.max(0, offset - COL * 2);
   }, [opensAt, closesAt, slotMs]);
 
+  // The native scrollbar is hidden; edge arrows + fades show there's more to either side
+  const [edges, setEdges] = useState({ left: false, right: false });
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () =>
+      setEdges({ left: el.scrollLeft > 4, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 });
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      ro.disconnect();
+    };
+  }, [gridWidth]);
+  const nudge = (dir: 1 | -1) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const twoHours = Math.max(1, Math.round(120 / settings.slot_minutes)) * COL;
+    el.scrollBy({ left: dir * Math.min(twoHours, el.clientWidth - NAME_W - COL), behavior: "smooth" });
+  };
+
   return (
     <main className="mx-auto w-full max-w-[1600px] px-3 py-4 sm:px-5">
       {/* Toolbar. Phones: ‹ date › Today on one row (tap the date to pick one), then a
@@ -228,8 +251,49 @@ export function Board({
       )}
 
       {/* Grid */}
-      <div className="overflow-hidden rounded-2xl border border-line bg-panel">
-        <div ref={scrollRef} className={cn("overflow-x-auto transition-opacity", loading && "pointer-events-none opacity-50")} aria-busy={loading}>
+      <div className="relative overflow-hidden rounded-2xl border border-line bg-panel">
+        {/* Edge fades + scroll arrows (in place of the native scrollbar) */}
+        <div
+          aria-hidden
+          style={{ left: NAME_W }}
+          className={cn(
+            "pointer-events-none absolute inset-y-0 z-20 w-10 bg-gradient-to-r from-panel to-transparent transition-opacity",
+            edges.left ? "opacity-100" : "opacity-0",
+          )}
+        />
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-y-0 right-0 z-20 w-10 bg-gradient-to-l from-panel to-transparent transition-opacity",
+            edges.right ? "opacity-100" : "opacity-0",
+          )}
+        />
+        <button
+          type="button"
+          onClick={() => nudge(-1)}
+          aria-label="Earlier times"
+          tabIndex={edges.left ? 0 : -1}
+          style={{ left: NAME_W + 8 }}
+          className={cn(
+            "absolute top-1/2 z-30 hidden size-8 -translate-y-1/2 place-items-center rounded-full border border-line bg-panel/90 text-muted shadow-lg backdrop-blur transition hover:text-ink sm:grid",
+            edges.left ? "opacity-100" : "pointer-events-none opacity-0",
+          )}
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => nudge(1)}
+          aria-label="Later times"
+          tabIndex={edges.right ? 0 : -1}
+          className={cn(
+            "absolute right-2 top-1/2 z-30 hidden size-8 -translate-y-1/2 place-items-center rounded-full border border-line bg-panel/90 text-muted shadow-lg backdrop-blur transition hover:text-ink sm:grid",
+            edges.right ? "opacity-100" : "pointer-events-none opacity-0",
+          )}
+        >
+          <ChevronRight className="size-4" />
+        </button>
+        <div ref={scrollRef} className={cn("no-scrollbar overflow-x-auto transition-opacity", loading && "pointer-events-none opacity-50")} aria-busy={loading}>
           <div style={{ width: NAME_W + gridWidth }} className="relative">
             {/* time header */}
             <div className="sticky top-0 z-20 flex border-b border-line bg-panel">
