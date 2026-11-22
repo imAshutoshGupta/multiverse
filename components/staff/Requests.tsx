@@ -1,5 +1,5 @@
 "use client";
-import { Check, Clock, MessageCircle, Pencil, Phone, Undo2, X } from "lucide-react";
+import { Check, Clock, LayoutDashboard, MessageCircle, Pencil, Phone, Undo2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { BookingDialog } from "@/components/board/BookingDialog";
 import { Button, cn, ErrorNote } from "@/components/ui";
@@ -118,7 +118,8 @@ export function Requests({
           </span>
         )}
       </div>
-      <p className="mt-1 text-sm text-muted">
+      <p className="mt-1 text-sm text-muted sm:hidden">Online bookings wait here until you confirm or decline.</p>
+      <p className="mt-1 hidden text-sm text-muted sm:block">
         Customers who booked on the website. Their slot is held until you confirm or decline. Confirming sends them a ready-made
         WhatsApp message.
       </p>
@@ -249,32 +250,54 @@ function RequestCard({
         <span className="w-1.5 shrink-0" style={{ backgroundColor: world?.color ?? "var(--color-line)" }} aria-hidden />
         <div className="min-w-0 flex-1 p-4">
           {/* Who */}
-          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="truncate font-display text-lg font-semibold">{b.customer_name}</span>
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="min-w-0 break-words font-display text-lg font-semibold leading-tight">{b.customer_name}</span>
                 <CustomerTag history={history} />
               </div>
               {b.phone && (
-                <div className="mt-0.5 flex items-center gap-3 text-sm text-muted">
+                <div className="mt-1 flex items-center gap-3 text-sm text-muted">
                   <span>{displayPhone(b.phone)}</span>
-                  <a href={telLink(b.phone)} className="inline-flex items-center gap-1 hover:text-ink" aria-label={`Call ${b.customer_name}`}>
+                  <a href={telLink(b.phone)} className="hidden items-center gap-1 hover:text-ink sm:inline-flex" aria-label={`Call ${b.customer_name}`}>
                     <Phone className="size-3.5" aria-hidden /> Call
                   </a>
                   <a
                     href={waLink(b.phone, "")}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 hover:text-ink"
+                    className="hidden items-center gap-1 hover:text-ink sm:inline-flex"
                     aria-label={`Chat with ${b.customer_name} on WhatsApp`}
                   >
                     <MessageCircle className="size-3.5" aria-hidden /> Chat
                   </a>
                 </div>
               )}
+              {now !== null && (
+                <span className={cn("mt-1 flex items-center gap-1 text-xs sm:hidden", waited > 30 * 60_000 ? "text-amber-300" : "text-muted")}>
+                  <Clock className="size-3.5" aria-hidden /> asked {ago(waited)}
+                </span>
+              )}
             </div>
+            {/* Phones: thumb-sized contact buttons */}
+            {b.phone && (
+              <div className="flex shrink-0 gap-2 sm:hidden">
+                <a href={telLink(b.phone)} className={ROUND_BTN} aria-label={`Call ${b.customer_name}`}>
+                  <Phone className="size-[18px]" aria-hidden />
+                </a>
+                <a
+                  href={waLink(b.phone, "")}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={cn(ROUND_BTN, "border-[#25D366]/40 text-[#25D366]")}
+                  aria-label={`Chat with ${b.customer_name} on WhatsApp`}
+                >
+                  <MessageCircle className="size-[18px]" aria-hidden />
+                </a>
+              </div>
+            )}
             {now !== null && (
-              <span className={cn("flex items-center gap-1 text-xs", waited > 30 * 60_000 ? "text-amber-300" : "text-muted")}>
+              <span className={cn("hidden shrink-0 items-center gap-1 text-xs sm:flex", waited > 30 * 60_000 ? "text-amber-300" : "text-muted")}>
                 <Clock className="size-3.5" aria-hidden /> asked {ago(waited)}
               </span>
             )}
@@ -305,39 +328,57 @@ function RequestCard({
 
           {/* Actions */}
           {declining ? (
-            <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/5 p-2">
+            <div className="mt-4 flex flex-col gap-2 rounded-xl border border-rose-500/30 bg-rose-500/5 p-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:p-2">
               <span className="px-1 text-sm">Decline this request? The slot will be freed.</span>
-              {declineText && (
-                <Button variant="danger" size="sm" disabled={busy} onClick={() => onDecline(declineText)}>
-                  Decline & WhatsApp
+              <div className="grid gap-2 sm:contents">
+                {declineText && (
+                  <Button variant="danger" className={COMPACT} disabled={busy} onClick={() => onDecline(declineText)}>
+                    Decline & WhatsApp
+                  </Button>
+                )}
+                <Button variant="danger" className={COMPACT} disabled={busy} onClick={() => onDecline()}>
+                  Decline only
                 </Button>
-              )}
-              <Button variant="danger" size="sm" disabled={busy} onClick={() => onDecline()}>
-                Decline only
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setDeclining(false)}>
-                Keep it
-              </Button>
+                <Button variant="ghost" className={cn(COMPACT, "max-sm:border max-sm:border-line")} onClick={() => setDeclining(false)}>
+                  Keep it
+                </Button>
+              </div>
             </div>
           ) : (
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              {confirmText ? (
-                <Button variant="success" disabled={busy} onClick={() => onConfirm(confirmText)}>
-                  <Check className="size-4" aria-hidden /> Confirm & WhatsApp
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <Button
+                variant="success"
+                className="h-11 w-full sm:h-10 sm:w-auto"
+                disabled={busy}
+                onClick={() => (confirmText ? onConfirm(confirmText) : onConfirm())}
+              >
+                <Check className="size-4" aria-hidden /> {confirmText ? "Confirm & WhatsApp" : "Confirm"}
+              </Button>
+              <div className={cn("grid grid-cols-2 gap-2 sm:contents", ORPHAN_SPAN)}>
+                {confirmText && (
+                  <Button variant="outline" disabled={busy} onClick={() => onConfirm()}>
+                    Confirm only
+                  </Button>
+                )}
+                <Button variant="ghost" className="max-sm:border max-sm:border-line" disabled={busy} onClick={onEdit}>
+                  <Pencil className="size-4" aria-hidden /> Change
                 </Button>
-              ) : null}
-              <Button variant={confirmText ? "outline" : "success"} disabled={busy} onClick={() => onConfirm()}>
-                {confirmText ? "Confirm only" : "Confirm"}
-              </Button>
-              <Button variant="ghost" disabled={busy} onClick={onEdit}>
-                <Pencil className="size-4" aria-hidden /> Change
-              </Button>
-              <Button variant="ghost" disabled={busy} onClick={() => setDeclining(true)} className="text-rose-300">
-                <X className="size-4" aria-hidden /> Decline
-              </Button>
-              <a href={boardHref} className="ml-auto text-sm text-muted underline-offset-2 hover:text-ink hover:underline">
-                View on dashboard
-              </a>
+                <Button
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => setDeclining(true)}
+                  className="text-rose-300 max-sm:border max-sm:border-rose-500/40"
+                >
+                  <X className="size-4" aria-hidden /> Decline
+                </Button>
+                <a
+                  href={boardHref}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-line text-sm font-semibold text-muted hover:text-ink sm:ml-auto sm:h-auto sm:border-0 sm:font-normal sm:underline-offset-2 sm:hover:underline"
+                >
+                  <LayoutDashboard className="size-4 sm:hidden" aria-hidden />
+                  View on dashboard
+                </a>
+              </div>
             </div>
           )}
         </div>
@@ -345,6 +386,12 @@ function RequestCard({
     </li>
   );
 }
+
+const ROUND_BTN = "grid size-10 place-items-center rounded-full border border-line bg-panel-2 text-muted transition hover:text-ink active:scale-95";
+/** Full size on phones (thumb-friendly), compact on wider screens. */
+const COMPACT = "sm:h-8 sm:px-3 sm:text-xs";
+/** In a 2-column grid, a lone last item spans the full row instead of leaving a gap. */
+const ORPHAN_SPAN = "[&>*:last-child:nth-child(odd)]:col-span-2";
 
 function CustomerTag({ history }: { history?: History }) {
   if (!history) return null;
