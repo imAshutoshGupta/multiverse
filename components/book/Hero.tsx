@@ -3,15 +3,17 @@
 // depths inside a tilted orbit ring, the camera follows the pointer, and
 // scrolling flies the camera forward through them while a starfield warps past.
 import { motion, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform, type MotionValue } from "motion/react";
-import { Fragment, useEffect, useRef, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@/components/ui";
 import type { Game } from "@/lib/types";
 import type { World } from "./BookingPanel";
 import { EASE, FINE_POINTER, useMedia } from "./fx";
 
-// The scroll-driven 3D show only runs on mouse-driven screens. Phones and tablets
-// scroll on a separate fast path that per-frame JS transforms can't keep up with,
-// which made the whole hero flicker, so they get a still (but still 3D) scene.
+// Two engines for the same show. Mouse-driven screens get the JS version below
+// (pointer tilt + scroll fly-through). Phones and tablets scroll on the browser's
+// compositor, which per-frame JS transforms lag behind (that flickered), so there
+// the scroll effects are CSS scroll-driven animations instead: see the hero-*
+// classes in globals.css. Reduced motion gets neither.
 const RICH_QUERY = "(min-width: 768px) and (hover: hover) and (pointer: fine)";
 
 type MV = MotionValue<number>;
@@ -64,9 +66,9 @@ export function Hero({
 
   return (
     // The outer box is taller than the screen so the scene stays pinned while it plays
-    <div ref={ref} className={cn("relative -mt-20", rich && "h-[120svh]")}>
+    <div ref={ref} className={cn("relative -mt-20", !reduce && "h-[120svh]")}>
       <section className="sticky top-0 isolate flex min-h-svh flex-col justify-end overflow-hidden px-5 pb-10 pt-32 sm:px-10 sm:pb-16">
-        <Starfield p={p} sx={sx} sy={sy} reduce={still} />
+        <Starfield p={p} sx={sx} sy={sy} reduce={reduce} lite={!rich} />
         {scene}
         {/* Plain gradients (not CSS masks) keep the moving 3D scene cheap to draw */}
         <div
@@ -78,13 +80,13 @@ export function Hero({
           className="pointer-events-none absolute inset-y-0 left-0 -z-10 hidden w-[58%] bg-linear-to-r from-void/80 via-void/40 to-transparent md:block"
         />
 
-        <motion.div className="relative" style={still ? undefined : { opacity: fade }}>
+        <motion.div className="hero-fade relative" style={still ? undefined : { opacity: fade }}>
           <h1 className="font-display text-[clamp(1.9rem,8.4vw,2.4rem)] font-bold leading-[1.02] tracking-[-0.02em] sm:text-[clamp(2.4rem,6.2vw,6rem)] sm:leading-[0.98] md:max-w-[62%]">
             {lines.map((line, i) => (
               <HeroLine key={i} text={line} index={i} count={lines.length} p={p} reduce={still} />
             ))}
           </h1>
-          <motion.div style={still ? undefined : { y: rise }}>
+          <motion.div className="hero-rise" style={still ? undefined : { y: rise }}>
             <motion.div
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
@@ -104,10 +106,14 @@ export function Hero({
 /** One headline line: words flip up in 3D, then lines drift apart as you scroll. */
 function HeroLine({ text, index, count, p, reduce }: { text: string; index: number; count: number; p: MV; reduce: boolean }) {
   // Upper lines rise faster, so the headline pulls apart as it leaves
-  const y = useTransform(p, [0, 0.38], [0, -(40 + (count - 1 - index) * 70)]);
+  const dy = -(40 + (count - 1 - index) * 70);
+  const y = useTransform(p, [0, 0.38], [0, dy]);
   const words = text.split(/\s+/).filter(Boolean);
   return (
-    <motion.span className="block pb-[0.06em] [perspective:900px]" style={reduce ? undefined : { y }}>
+    <motion.span
+      className="hero-line block pb-[0.06em] [perspective:900px]"
+      style={reduce ? ({ "--ly": `${dy}px` } as CSSProperties) : { y }}
+    >
       <span className="block text-balance">
         {words.map((w, j) => (
           <Fragment key={j}>
@@ -155,7 +161,7 @@ function PosterField({ posters, p, sx, sy, reduce }: { posters: Game[]; p: MV; s
   return (
     <motion.div
       aria-hidden
-      className="pointer-events-none absolute inset-x-0 top-[4.5rem] -z-10 h-[44%] md:inset-y-0 md:left-auto md:right-0 md:top-0 md:h-full md:w-[64%]"
+      className="hero-fly pointer-events-none absolute inset-x-0 top-[4.5rem] -z-10 h-[44%] md:inset-y-0 md:left-auto md:right-0 md:top-0 md:h-full md:w-[64%]"
       style={{ perspective: 1100, ...(reduce ? {} : { opacity: fade, visibility }) }}
     >
       {/* Flat layers behind the 3D stage, so nothing intersects the posters */}
@@ -196,8 +202,11 @@ function Poster({ game, slot, index, still }: { game: Game; slot: (typeof SLOTS)
       animate={{ z: slot.z, opacity: 1 }}
       transition={{ z: { duration: 2, ease: EASE, delay }, opacity: { duration: 0.9, delay } }}
     >
+      {/* Nearer posters grow more as you scroll, so they seem to rush past */}
+      <div className="hero-poster absolute inset-0" style={{ "--fly": (1.15 + Math.max(0, slot.z + 800) / 1900).toFixed(2) } as CSSProperties}>
       <motion.div
-        className="absolute inset-0 overflow-hidden rounded-[18px] shadow-[0_20px_40px_-20px_rgb(0_0_0/0.85)] ring-1 ring-white/10 md:shadow-[0_40px_80px_-24px_rgb(0_0_0/0.85)]"
+        className="hero-bob absolute inset-0 overflow-hidden rounded-[18px] shadow-[0_20px_40px_-20px_rgb(0_0_0/0.85)] ring-1 ring-white/10 md:shadow-[0_40px_80px_-24px_rgb(0_0_0/0.85)]"
+        style={{ "--bob-d": `${6 + (index % 4) * 1.3}s`, "--bob-delay": `${-index * 0.9}s` } as CSSProperties}
         animate={still ? undefined : { y: [0, -14, 0] }}
         transition={{ duration: 6 + (index % 4) * 1.3, repeat: Infinity, ease: "easeInOut", delay: index * 0.4 }}
       >
@@ -212,6 +221,7 @@ function Poster({ game, slot, index, still }: { game: Game; slot: (typeof SLOTS)
         <div className="absolute inset-0 bg-linear-to-tr from-transparent via-transparent to-white/15" />
         {dim > 0 && <div className="absolute inset-0 bg-void" style={{ opacity: dim }} />}
       </motion.div>
+      </div>
     </motion.div>
   );
 }
@@ -233,13 +243,13 @@ function OrbitRing({ scale, spin }: { scale?: MV; spin: boolean }) {
       style={{ x: "-50%", y: "-50%", rotateX: 64, scale }}
     >
       <motion.div
-        className="absolute inset-0 rounded-full opacity-60"
+        className="hero-spin absolute inset-0 rounded-full opacity-60"
         style={{ background: RING_FILL, maskImage: RING_GLOW_MASK, WebkitMaskImage: RING_GLOW_MASK }}
         animate={spin ? { rotate: 360 } : undefined}
         transition={{ duration: 26, repeat: Infinity, ease: "linear" }}
       />
       <motion.div
-        className="absolute inset-0 rounded-full"
+        className="hero-spin absolute inset-0 rounded-full"
         style={{ background: RING_FILL, maskImage: RING_MASK, WebkitMaskImage: RING_MASK }}
         animate={spin ? { rotate: 360 } : undefined}
         transition={{ duration: 26, repeat: Infinity, ease: "linear" }}
@@ -287,7 +297,7 @@ function PlanetScene({ worlds, p, sx, sy, reduce }: { worlds: World[]; p: MV; sx
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute inset-x-0 top-16 -z-10 h-[40%] md:inset-x-auto md:right-0 md:top-0 md:h-full md:w-[42%]"
+      className="hero-fly pointer-events-none absolute inset-x-0 top-16 -z-10 h-[40%] md:inset-x-auto md:right-0 md:top-0 md:h-full md:w-[42%]"
     >
       <motion.svg
         className="absolute inset-0 h-full w-full text-line"
@@ -350,7 +360,7 @@ function Planet({
 /* -------------------------------------------------------------- starfield */
 
 /** Canvas stars that drift toward you, streak when you scroll down, and shift with the pointer. */
-function Starfield({ p, sx, sy, reduce }: { p: MV; sx: MV; sy: MV; reduce: boolean }) {
+function Starfield({ p, sx, sy, reduce, lite }: { p: MV; sx: MV; sy: MV; reduce: boolean; lite: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -373,14 +383,14 @@ function Starfield({ p, sx, sy, reduce }: { p: MV; sx: MV; sy: MV; reduce: boole
     let h = 0;
     let stars: Star[] = [];
     const resize = () => {
-      const dpr = Math.min(devicePixelRatio || 1, reduce ? 1.5 : 2);
+      const dpr = Math.min(devicePixelRatio || 1, lite ? 1.5 : 2);
       w = canvas.clientWidth;
       h = canvas.clientHeight;
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (!stars.length) {
-        const n = Math.round(Math.min(reduce ? 140 : 280, Math.max(80, (w * h) / 5200)));
+        const n = Math.round(Math.min(lite ? 140 : 280, Math.max(80, (w * h) / 5200)));
         stars = Array.from({ length: n }, () => spawn(false));
       }
     };
@@ -466,7 +476,7 @@ function Starfield({ p, sx, sy, reduce }: { p: MV; sx: MV; sy: MV; reduce: boole
       ro.disconnect();
       io.disconnect();
     };
-  }, [p, sx, sy, reduce]);
+  }, [p, sx, sy, reduce, lite]);
 
   return <canvas ref={ref} aria-hidden className="pointer-events-none absolute inset-0 -z-20 h-full w-full" />;
 }

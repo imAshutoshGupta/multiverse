@@ -205,6 +205,107 @@ dialog::backdrop {
   background-image: linear-gradient(180deg, var(--color-rift), var(--color-portal));
 }
 
+/* ---------- Hero on touch screens ----------
+ * Phones and tablets scroll on the browser's compositor thread. JS-driven
+ * transforms lag a frame behind that and made the hero flicker, so on these
+ * screens the hero's scroll effects are CSS scroll-driven animations, which the
+ * browser plays in step with your finger. Desktop uses the JS version in
+ * Hero.tsx; browsers without scroll timelines just get a still scene.
+ */
+@media (prefers-reduced-motion: no-preference) and ((max-width: 767.98px) or (hover: none) or (pointer: coarse)) {
+  .hero-spin {
+    animation: hero-spin 26s linear infinite;
+  }
+  .hero-bob {
+    animation: hero-bob var(--bob-d, 7s) ease-in-out var(--bob-delay, 0s) infinite;
+  }
+
+  @supports (animation-timeline: scroll()) {
+    .hero-fly,
+    .hero-poster,
+    .hero-fade,
+    .hero-rise,
+    .hero-line {
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-duration: 1ms; /* fallback for engines without "auto" */
+      animation-duration: auto;
+      animation-timeline: scroll(root block);
+    }
+    .hero-fly {
+      animation-name: hero-fly;
+      animation-range: 0 40svh;
+    }
+    .hero-poster {
+      animation-name: hero-poster;
+      animation-range: 0 38svh;
+    }
+    .hero-fade {
+      animation-name: hero-fade;
+      animation-range: 0 30svh;
+    }
+    .hero-rise,
+    .hero-line {
+      animation-range: 0 44svh;
+    }
+    .hero-rise {
+      animation-name: hero-rise;
+    }
+    .hero-line {
+      animation-name: hero-line;
+    }
+  }
+}
+@keyframes hero-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes hero-bob {
+  50% {
+    transform: translateY(-12px);
+  }
+}
+/* The whole poster cloud rushes toward you and fades, then stops being drawn */
+@keyframes hero-fly {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  20% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+@keyframes hero-poster {
+  to {
+    transform: scale(var(--fly, 1.2));
+  }
+}
+@keyframes hero-fade {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes hero-rise {
+  to {
+    transform: translateY(-56px);
+  }
+}
+/* Upper headline lines rise further, so the headline pulls apart */
+@keyframes hero-line {
+  to {
+    transform: translateY(calc(var(--ly, 0px) * 0.6));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
