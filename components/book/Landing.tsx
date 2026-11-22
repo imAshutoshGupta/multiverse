@@ -257,7 +257,7 @@ export function Landing({ catalog }: { catalog: PublicCatalog }) {
 
         {/* What do you want to play? */}
         {games.length > 0 && (
-          <section id="play" className="relative z-10 scroll-mt-2 px-5 pb-20 pt-10 sm:px-10 sm:pb-28">
+          <section id="play" className="relative z-10 scroll-mt-2 px-5 pb-20 pt-6 sm:px-10 sm:pb-28 sm:pt-10">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <h2 className="font-display text-3xl font-bold tracking-tight sm:text-5xl">
                 <RevealWords text="What do you want to play?" />
@@ -559,7 +559,7 @@ function LiveChip({ world, free, index }: { world: World; free: number | null; i
 function TapeBand({ names }: { names: string[] }) {
   const list = names.length < 6 ? [...names, ...names, ...names] : names;
   return (
-    <div aria-hidden className="relative z-10 py-12 sm:py-16">
+    <div aria-hidden className="relative z-10 py-8 sm:py-16">
       <div className="relative -mx-[5%] w-[110%] -rotate-[3deg] bg-portal py-3 text-on-portal shadow-[0_30px_80px_-30px_var(--color-portal)] sm:py-4">
         <VelocityMarquee speed={3}>
           {list.map((n, i) => (

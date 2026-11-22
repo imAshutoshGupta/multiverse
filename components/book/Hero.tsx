@@ -65,8 +65,10 @@ export function Hero({
   );
 
   return (
-    // The outer box is taller than the screen so the scene stays pinned while it plays
-    <div ref={ref} className={cn("relative -mt-20", !reduce && "h-[120svh]")}>
+    // On mouse-driven screens the outer box is taller than the screen, so the scene
+    // stays pinned while it plays. Phones don't pin: the scene plays out as the hero
+    // scrolls away, so the next section follows straight on with no empty screen.
+    <div ref={ref} className="relative -mt-20 motion-reduce:h-auto [@media(min-width:768px)_and_(hover:hover)_and_(pointer:fine)]:h-[120svh]">
       <section className="sticky top-0 isolate flex min-h-svh flex-col justify-end overflow-hidden px-5 pb-10 pt-32 sm:px-10 sm:pb-16">
         <Starfield p={p} sx={sx} sy={sy} reduce={reduce} lite={!rich} />
         {scene}

@@ -232,21 +232,22 @@ dialog::backdrop {
       animation-duration: auto;
       animation-timeline: scroll(root block);
     }
+    /* The hero isn't pinned on phones: these play out while it scrolls away */
     .hero-fly {
       animation-name: hero-fly;
-      animation-range: 0 40svh;
+      animation-range: 0 55svh;
     }
     .hero-poster {
       animation-name: hero-poster;
-      animation-range: 0 38svh;
+      animation-range: 0 55svh;
     }
     .hero-fade {
       animation-name: hero-fade;
-      animation-range: 0 30svh;
+      animation-range: 0 45svh;
     }
     .hero-rise,
     .hero-line {
-      animation-range: 0 44svh;
+      animation-range: 0 55svh;
     }
     .hero-rise {
       animation-name: hero-rise;
