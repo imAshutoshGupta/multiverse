@@ -176,7 +176,7 @@ export function Landing({ catalog }: { catalog: PublicCatalog }) {
             className={cn(
               "mx-auto flex items-center gap-3 rounded-full border py-2 transition-[max-width,background-color,border-color,padding,box-shadow] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
               scrolled
-                ? "max-w-5xl border-line bg-void/60 pl-3 pr-2 shadow-[0_24px_60px_-30px_rgb(0_0_0/0.9)] backdrop-blur-xl"
+                ? "max-w-5xl border-line bg-void/90 pl-3 pr-2 shadow-[0_24px_60px_-30px_rgb(0_0_0/0.9)] md:bg-void/60 md:backdrop-blur-xl"
                 : "max-w-[100rem] border-transparent px-2 sm:px-5",
             )}
           >
@@ -219,13 +219,13 @@ export function Landing({ catalog }: { catalog: PublicCatalog }) {
         </header>
 
         <Hero lines={lines} imageUrl={settings.hero_image_url} posters={posters} worlds={worlds}>
-          {settings.about && <p className="mt-6 max-w-xl text-lg text-muted sm:text-xl">{settings.about}</p>}
-          <div ref={heroCta} className="mt-8 flex flex-wrap items-center gap-3">
+          {settings.about && <p className="mt-4 max-w-xl text-base text-muted sm:mt-6 sm:text-xl">{settings.about}</p>}
+          <div ref={heroCta} className="mt-6 flex flex-wrap items-center gap-2.5 sm:mt-8 sm:gap-3">
             {canBook ? (
               <Magnetic>
                 <button
                   onClick={startBooking}
-                  className="btn-shine btn-shine-loop inline-flex h-14 cursor-pointer items-center rounded-full bg-portal px-8 text-base font-semibold text-on-portal shadow-[0_18px_50px_-18px_var(--color-portal)] transition hover:bg-portal-strong active:scale-[0.98]"
+                  className="btn-shine btn-shine-loop inline-flex h-12 cursor-pointer items-center rounded-full bg-portal px-6 text-[15px] font-semibold sm:h-14 sm:px-8 sm:text-base text-on-portal shadow-[0_18px_50px_-18px_var(--color-portal)] transition hover:bg-portal-strong active:scale-[0.98]"
                 >
                   Find a game
                 </button>
@@ -236,13 +236,13 @@ export function Landing({ catalog }: { catalog: PublicCatalog }) {
                 href={waLink(wa, `Hi ${settings.cafe_name}! I'd like to book a slot.`)}
                 target="_blank"
                 rel="noreferrer"
-                className="pill-fill inline-flex h-14 items-center gap-2 rounded-full border border-line bg-void/40 px-6 text-base font-semibold backdrop-blur"
+                className="pill-fill inline-flex h-12 items-center gap-2 rounded-full border border-line bg-void/70 px-5 text-[15px] font-semibold sm:h-14 sm:px-6 sm:text-base md:bg-void/40 md:backdrop-blur"
               >
-                <MessageCircle className="size-5" aria-hidden /> WhatsApp us
+                <MessageCircle className="size-4 sm:size-5" aria-hidden /> WhatsApp us
               </a>
             </Magnetic>
           </div>
-          <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
+          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted sm:mt-6">
             <span className="flex items-center gap-2">
               <MapPin className="size-4" aria-hidden /> {settings.address}
             </span>
@@ -266,7 +266,7 @@ export function Landing({ catalog }: { catalog: PublicCatalog }) {
             </div>
 
             <div
-              className="sticky z-20 -mx-5 mt-6 bg-void/85 px-5 py-3 backdrop-blur-xl transition-[top] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] sm:-mx-10 sm:px-10"
+              className="sticky z-20 -mx-5 mt-6 bg-void/95 px-5 py-3 md:bg-void/85 md:backdrop-blur-xl transition-[top] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] sm:-mx-10 sm:px-10"
               style={{ top: headerHidden ? 0 : 72 }}
             >
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -544,7 +544,7 @@ function LiveChip({ world, free, index }: { world: World; free: number | null; i
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ type: "spring", stiffness: 300, damping: 22, delay: index * 0.08 }}
-      className="inline-flex items-center gap-2 rounded-full border border-line bg-void/50 px-3 py-1.5 text-xs font-semibold text-ink backdrop-blur"
+      className="inline-flex items-center gap-2 rounded-full border border-line bg-void/70 px-3 py-1.5 text-xs font-semibold text-ink md:bg-void/50 md:backdrop-blur"
     >
       <span className="relative flex size-2" aria-hidden>
         {free > 0 && <span className="absolute inset-0 animate-ping rounded-full bg-[#35e08a] opacity-70" />}
@@ -570,7 +570,7 @@ function TapeBand({ names }: { names: string[] }) {
           ))}
         </VelocityMarquee>
       </div>
-      <div className="relative -mx-[5%] -mt-6 w-[110%] rotate-[2deg] border-y border-line bg-void/85 py-3 backdrop-blur sm:-mt-8 sm:py-4">
+      <div className="relative -mx-[5%] -mt-6 w-[110%] rotate-[2deg] border-y border-line bg-void/95 py-3 sm:-mt-8 sm:py-4 md:bg-void/85 md:backdrop-blur">
         <VelocityMarquee speed={-2.2}>
           {[...list].reverse().map((n, i) => (
             <span key={i} className="text-outline flex items-center gap-6 pr-6 font-display text-3xl font-bold tracking-tight sm:text-5xl">
@@ -693,7 +693,7 @@ function GameCard({
             {game.blurb && <p className="line-clamp-2 text-xs text-white/75 sm:text-sm">{game.blurb}</p>}
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-white/85">
               {labels.slice(0, 3).map((l) => (
-                <span key={l} className="rounded-full bg-white/15 px-2 py-0.5 backdrop-blur">
+                <span key={l} className="rounded-full bg-white/20 px-2 py-0.5 md:bg-white/15 md:backdrop-blur">
                   {l}
                 </span>
               ))}
@@ -813,7 +813,7 @@ function OpenPill({ state }: { state: ReturnType<typeof openState> | null }) {
       ? `Opens ${istDate(state.opensAt) === istDate() ? "" : fmtDay(istDate(state.opensAt)) + ", "}${fmtTime(state.opensAt)}`
       : "Closed";
   return (
-    <span className="inline-flex h-9 items-center gap-2 rounded-full border border-line bg-void/60 px-3.5 text-xs font-semibold backdrop-blur sm:text-sm">
+    <span className="inline-flex h-9 items-center gap-2 rounded-full border border-line bg-void/80 px-3.5 text-xs font-semibold sm:text-sm md:bg-void/60 md:backdrop-blur">
       <span className="relative flex size-2" aria-hidden>
         {state.open && <span className="absolute inset-0 animate-ping rounded-full bg-[#35e08a] opacity-70" />}
         <span className={cn("relative size-2 rounded-full", state.open ? "bg-[#35e08a]" : "bg-muted")} />

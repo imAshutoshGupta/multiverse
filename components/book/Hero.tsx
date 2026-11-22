@@ -7,7 +7,12 @@ import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/components/ui";
 import type { Game } from "@/lib/types";
 import type { World } from "./BookingPanel";
-import { EASE, FINE_POINTER } from "./fx";
+import { EASE, FINE_POINTER, useMedia } from "./fx";
+
+// The scroll-driven 3D show only runs on mouse-driven screens. Phones and tablets
+// scroll on a separate fast path that per-frame JS transforms can't keep up with,
+// which made the whole hero flicker, so they get a still (but still 3D) scene.
+const RICH_QUERY = "(min-width: 768px) and (hover: hover) and (pointer: fine)";
 
 type MV = MotionValue<number>;
 
@@ -27,6 +32,8 @@ export function Hero({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion() ?? false;
+  const rich = useMedia(RICH_QUERY) && !reduce;
+  const still = !rich;
   const { scrollYProgress: p } = useScroll({ target: ref, offset: ["start start", "end start"] });
 
   // Pointer position across the window, -1..1, eased
@@ -35,44 +42,49 @@ export function Hero({
   const sx = useSpring(mx, { stiffness: 45, damping: 16 });
   const sy = useSpring(my, { stiffness: 45, damping: 16 });
   useEffect(() => {
-    if (reduce || !matchMedia(FINE_POINTER).matches) return;
+    if (still || !matchMedia(FINE_POINTER).matches) return;
     const move = (e: PointerEvent) => {
       mx.set((e.clientX / innerWidth) * 2 - 1);
       my.set((e.clientY / innerHeight) * 2 - 1);
     };
     addEventListener("pointermove", move, { passive: true });
     return () => removeEventListener("pointermove", move);
-  }, [reduce, mx, my]);
+  }, [still, mx, my]);
 
   const fade = useTransform(p, [0, 0.27], [1, 0]);
   const rise = useTransform(p, [0, 0.38], [0, -70]);
 
   const scene = imageUrl ? (
-    <PhotoScene src={imageUrl} p={p} sx={sx} sy={sy} reduce={reduce} />
+    <PhotoScene src={imageUrl} p={p} sx={sx} sy={sy} reduce={still} />
   ) : posters.length >= 4 ? (
-    <PosterField posters={posters} p={p} sx={sx} sy={sy} reduce={reduce} />
+    <PosterField posters={posters} p={p} sx={sx} sy={sy} reduce={still} />
   ) : (
-    <PlanetScene worlds={worlds} p={p} sx={sx} sy={sy} reduce={reduce} />
+    <PlanetScene worlds={worlds} p={p} sx={sx} sy={sy} reduce={still} />
   );
 
   return (
     // The outer box is taller than the screen so the scene stays pinned while it plays
-    <div ref={ref} className={cn("relative -mt-20", !reduce && "h-[120svh]")}>
-      <section className="sticky top-0 isolate flex min-h-svh flex-col justify-end overflow-hidden px-5 pb-12 pt-32 sm:px-10 sm:pb-16">
-        <Starfield p={p} sx={sx} sy={sy} reduce={reduce} />
+    <div ref={ref} className={cn("relative -mt-20", rich && "h-[120svh]")}>
+      <section className="sticky top-0 isolate flex min-h-svh flex-col justify-end overflow-hidden px-5 pb-10 pt-32 sm:px-10 sm:pb-16">
+        <Starfield p={p} sx={sx} sy={sy} reduce={still} />
         {scene}
+        {/* Plain gradients (not CSS masks) keep the moving 3D scene cheap to draw */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-2/3 bg-linear-to-t from-void via-void/60 to-transparent md:via-void/30"
+          className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-2/3 bg-linear-to-t from-void via-void/70 to-transparent md:via-void/30"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 -z-10 hidden w-[58%] bg-linear-to-r from-void/80 via-void/40 to-transparent md:block"
         />
 
-        <motion.div className="relative" style={reduce ? undefined : { opacity: fade }}>
-          <h1 className="font-display text-[clamp(2.4rem,6.2vw,6rem)] font-bold leading-[0.98] tracking-[-0.02em] md:max-w-[62%]">
+        <motion.div className="relative" style={still ? undefined : { opacity: fade }}>
+          <h1 className="font-display text-[clamp(1.9rem,8.4vw,2.4rem)] font-bold leading-[1.02] tracking-[-0.02em] sm:text-[clamp(2.4rem,6.2vw,6rem)] sm:leading-[0.98] md:max-w-[62%]">
             {lines.map((line, i) => (
-              <HeroLine key={i} text={line} index={i} count={lines.length} p={p} reduce={reduce} />
+              <HeroLine key={i} text={line} index={i} count={lines.length} p={p} reduce={still} />
             ))}
           </h1>
-          <motion.div style={reduce ? undefined : { y: rise }}>
+          <motion.div style={still ? undefined : { y: rise }}>
             <motion.div
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
@@ -132,55 +144,61 @@ const SLOTS = [
 function PosterField({ posters, p, sx, sy, reduce }: { posters: Game[]; p: MV; sx: MV; sy: MV; reduce: boolean }) {
   const rotateY = useTransform(sx, (v) => -12 + v * 14);
   const rotateX = useTransform(sy, (v) => 7 - v * 9);
-  const z = useTransform(p, [0, 0.42], [0, 1350]);
-  const fade = useTransform(p, [0.15, 0.42], [1, 0]);
+  // The camera flies in, but stops well short of the nearest poster: anything that
+  // reaches the perspective plane (1100px) renders glitchy, so it fades out first.
+  const z = useTransform(p, [0, 0.32], [0, 480]);
+  const fade = useTransform(p, [0.08, 0.28], [1, 0]);
+  // Once faded, stop drawing it altogether (no ghost layers while scrolled past)
+  const visibility = useTransform(p, (v) => (v > 0.29 ? "hidden" : "visible"));
+  const ringScale = useTransform(p, [0, 0.32], [1, 1.5]);
 
   return (
     <motion.div
       aria-hidden
-      className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[58%] [mask-image:linear-gradient(to_bottom,black_50%,transparent)] md:inset-y-0 md:left-auto md:right-0 md:h-full md:w-[64%] md:[mask-image:linear-gradient(to_left,black_50%,transparent)]"
-      style={{ perspective: 1100, opacity: reduce ? 1 : fade }}
+      className="pointer-events-none absolute inset-x-0 top-[4.5rem] -z-10 h-[44%] md:inset-y-0 md:left-auto md:right-0 md:top-0 md:h-full md:w-[64%]"
+      style={{ perspective: 1100, ...(reduce ? {} : { opacity: fade, visibility }) }}
     >
+      {/* Flat layers behind the 3D stage, so nothing intersects the posters */}
+      <div
+        className="absolute left-[56%] top-[46%] aspect-square w-[80%] -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{ background: "radial-gradient(closest-side, color-mix(in oklab, var(--color-portal) 45%, transparent), transparent)" }}
+      />
+      <OrbitRing scale={reduce ? undefined : ringScale} spin={!reduce} />
+
       <motion.div
         className="absolute inset-0"
         style={{
           transformStyle: "preserve-3d",
-          willChange: "transform",
           rotateX: reduce ? 7 : rotateX,
           rotateY: reduce ? -12 : rotateY,
           z: reduce ? 0 : z,
         }}
       >
-        <div
-          className="absolute left-[56%] top-[46%] aspect-square w-[70%] rounded-full"
-          style={{
-            transform: "translate(-50%, -50%) translateZ(-900px)",
-            background: "radial-gradient(closest-side, color-mix(in oklab, var(--color-portal) 55%, transparent), transparent)",
-          }}
-        />
-        <OrbitRing />
         {SLOTS.map((s, i) => (
-          <Poster key={i} game={posters[i % posters.length]} slot={s} index={i} />
+          <Poster key={i} game={posters[i % posters.length]} slot={s} index={i} still={reduce} />
         ))}
       </motion.div>
     </motion.div>
   );
 }
 
-function Poster({ game, slot, index }: { game: Game; slot: (typeof SLOTS)[number]; index: number }) {
+// Slots that crowd a narrow screen (half off the edge, or tucked under the headline)
+const DESKTOP_ONLY = new Set([4, 6, 7]);
+
+function Poster({ game, slot, index, still }: { game: Game; slot: (typeof SLOTS)[number]; index: number; still: boolean }) {
   const dim = Math.min(0.62, Math.max(0, -slot.z / 1150));
   const delay = 0.1 + index * 0.08;
   return (
     <motion.div
-      className="absolute aspect-[3/4]"
+      className={cn("absolute aspect-[3/4]", DESKTOP_ONLY.has(index) && "max-md:hidden")}
       style={{ left: `${slot.x}%`, top: `${slot.y}%`, width: `${slot.w}%`, x: "-50%", y: "-50%", rotateZ: slot.r, rotateY: (50 - slot.x) * 0.22 }}
       initial={{ z: -2400, opacity: 0 }}
       animate={{ z: slot.z, opacity: 1 }}
       transition={{ z: { duration: 2, ease: EASE, delay }, opacity: { duration: 0.9, delay } }}
     >
       <motion.div
-        className="absolute inset-0 overflow-hidden rounded-[18px] shadow-[0_40px_80px_-24px_rgb(0_0_0/0.85)] ring-1 ring-white/10"
-        animate={{ y: [0, -14, 0] }}
+        className="absolute inset-0 overflow-hidden rounded-[18px] shadow-[0_20px_40px_-20px_rgb(0_0_0/0.85)] ring-1 ring-white/10 md:shadow-[0_40px_80px_-24px_rgb(0_0_0/0.85)]"
+        animate={still ? undefined : { y: [0, -14, 0] }}
         transition={{ duration: 6 + (index % 4) * 1.3, repeat: Infinity, ease: "easeInOut", delay: index * 0.4 }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- owner-uploaded posters from any host */}
@@ -203,26 +221,30 @@ const RING_GLOW_MASK = "radial-gradient(farthest-side, transparent calc(100% - 4
 const RING_FILL =
   "conic-gradient(from 0deg, transparent 0deg, var(--color-portal) 70deg, var(--color-rift) 150deg, transparent 210deg, var(--color-portal) 300deg, transparent 360deg)";
 
-/** The logo's orbit, scaled up: a tilted ring with light running around it. */
-function OrbitRing() {
+/**
+ * The logo's orbit, scaled up: a tilted ring with light running around it.
+ * It is its own flat layer (not part of the posters' 3D space), so the browser
+ * never has to re-sort it against the posters, which is what caused flicker.
+ */
+function OrbitRing({ scale, spin }: { scale?: MV; spin: boolean }) {
   return (
-    <div
-      className="absolute left-[58%] top-[52%] aspect-square w-[110%]"
-      style={{ transform: "translate(-50%, -50%) translateZ(-140px) rotateX(64deg)", transformStyle: "preserve-3d" }}
+    <motion.div
+      className="absolute left-[58%] top-[52%] aspect-square w-[100%] md:left-[64%] md:w-[92%]"
+      style={{ x: "-50%", y: "-50%", rotateX: 64, scale }}
     >
       <motion.div
         className="absolute inset-0 rounded-full opacity-60"
         style={{ background: RING_FILL, maskImage: RING_GLOW_MASK, WebkitMaskImage: RING_GLOW_MASK }}
-        animate={{ rotate: 360 }}
+        animate={spin ? { rotate: 360 } : undefined}
         transition={{ duration: 26, repeat: Infinity, ease: "linear" }}
       />
       <motion.div
         className="absolute inset-0 rounded-full"
         style={{ background: RING_FILL, maskImage: RING_MASK, WebkitMaskImage: RING_MASK }}
-        animate={{ rotate: 360 }}
+        animate={spin ? { rotate: 360 } : undefined}
         transition={{ duration: 26, repeat: Infinity, ease: "linear" }}
       />
-    </div>
+    </motion.div>
   );
 }
 
@@ -351,14 +373,16 @@ function Starfield({ p, sx, sy, reduce }: { p: MV; sx: MV; sy: MV; reduce: boole
     let h = 0;
     let stars: Star[] = [];
     const resize = () => {
-      const dpr = Math.min(devicePixelRatio || 1, 2);
+      const dpr = Math.min(devicePixelRatio || 1, reduce ? 1.5 : 2);
       w = canvas.clientWidth;
       h = canvas.clientHeight;
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const n = Math.round(Math.min(280, Math.max(90, (w * h) / 5200)));
-      stars = Array.from({ length: n }, () => spawn(false));
+      if (!stars.length) {
+        const n = Math.round(Math.min(reduce ? 140 : 280, Math.max(80, (w * h) / 5200)));
+        stars = Array.from({ length: n }, () => spawn(false));
+      }
     };
 
     let speed = 0.0007;
