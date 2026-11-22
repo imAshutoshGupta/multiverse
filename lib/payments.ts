@@ -55,8 +55,8 @@ export const PAY_LABEL: Record<PayState, string> = {
   closed: "",
 };
 
-/** Methods staff can pick when recording money. Cash / Other stay valid for older entries. */
-export const PICK_METHODS: PaymentMethod[] = ["upi", "card"];
+/** Methods staff can pick when recording money. Card / Other stay valid for older entries. */
+export const PICK_METHODS: PaymentMethod[] = ["upi", "cash"];
 export const DEFAULT_METHOD: PaymentMethod = "upi";
 
 export const METHOD_LABEL: Record<PaymentMethod, string> = {

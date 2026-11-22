@@ -18,8 +18,10 @@ export default function RequestsPage() {
 
 async function RequestsContent() {
   // Load the pending list alongside the catalogue so it's on screen at first paint.
-  const [{ settings, stations, types, games }, initialPending] = await Promise.all([loadCatalog(), loadPending()]);
-  return <Requests settings={settings} stations={stations} types={types} games={games} initialPending={initialPending} />;
+  const [{ settings, stations, types, games, isOwner }, initialPending] = await Promise.all([loadCatalog(), loadPending()]);
+  return (
+    <Requests settings={settings} stations={stations} types={types} games={games} isOwner={isOwner} initialPending={initialPending} />
+  );
 }
 
 /** Pending requests that haven't finished yet; the page keeps them live from there. */
